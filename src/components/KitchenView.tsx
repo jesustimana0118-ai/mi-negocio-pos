@@ -209,7 +209,7 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
                 {/* Filas de platos con interacción elegante */}
                 <div className="space-y-2 flex-1">
                   {order.items.map((item) => {
-                    const isPending = item.status === 'pending';
+                    
                     const isPreparing = item.status === 'preparing';
                     const isReady = item.status === 'ready';
 
