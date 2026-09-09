@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { ChefHat, Clock, CheckCircle2, RefreshCw } from 'lucide-react';
+import { ChefHat, Clock, CheckCircle2, RefreshCw, Flame, Check } from 'lucide-react';
 
 interface KitchenOrderItem {
   id: string;
   order_id: string;
   quantity: number;
-  status: 'pending' | 'preparing' | 'ready';
+  status: 'pending' | 'preparing' | 'ready' | 'completed';
   created_at?: string;
   product: {
     name: string;
@@ -103,14 +103,18 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
   }, []);
 
   const toggleItemStatus = async (item: KitchenOrderItem) => {
-    const nextStatus: 'pending' | 'preparing' | 'ready' =
-      item.status === 'pending'
-        ? 'preparing'
-        : item.status === 'preparing'
-        ? 'ready'
-        : 'pending';
+    // Ciclo: pending (Marchar) -> ready (Listo) -> completed (Completado) -> pending
+    let nextStatus: 'pending' | 'ready' | 'completed' = 'pending';
 
-    // Actualización inmediata en memoria sin saltos ni recargas
+    if (item.status === 'pending') {
+      nextStatus = 'ready';
+    } else if (item.status === 'ready' || item.status === 'preparing') {
+      nextStatus = 'completed';
+    } else {
+      nextStatus = 'pending';
+    }
+
+    // Actualización inmediata en pantalla (optimistic UI)
     setOrders((prevOrders) =>
       prevOrders.map((order) => {
         if (order.id !== item.order_id) return order;
@@ -123,6 +127,7 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
       })
     );
 
+    // Sincronización con Supabase
     await supabase
       .from('order_items')
       .update({ status: nextStatus })
@@ -134,24 +139,28 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
       {/* Cabecera */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-extrabold flex items-center gap-2">
-            <ChefHat className="w-5 h-5 text-amber-500" />
+          <h2 className={`text-base font-extrabold flex items-center gap-2 ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+            <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500 border border-amber-500/20">
+              <ChefHat className="w-4 h-4" />
+            </span>
             Pantalla KDS • Comandas en Marcha
           </h2>
-          <p className={`text-xs font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+          <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600 font-medium'}`}>
             Recepción y despacho en tiempo real vía WebSockets
           </p>
         </div>
         
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold font-mono px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+          <span className="text-xs font-bold font-mono px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 shadow-xs">
             {orders.length} comanda(s) activas
           </span>
           <button
             onClick={() => loadKitchenOrders(false)}
             disabled={loading}
-            className={`p-2 rounded-xl border transition active:scale-95 ${
-              isDark ? 'bg-zinc-800 text-zinc-300 border-zinc-700' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs ${
+              isDark
+                ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
             }`}
             title="Refrescar KDS"
           >
@@ -162,14 +171,20 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
 
       {/* Listado de Comandas */}
       {loading ? (
-        <div className="py-24 text-center text-xs font-mono text-slate-400 animate-pulse">
+        <div className={`py-24 text-center text-xs font-mono animate-pulse rounded-2xl border ${
+          isDark ? 'border-zinc-800 text-zinc-500 bg-zinc-900/30' : 'border-slate-200 text-slate-500 bg-white/70 shadow-inner'
+        }`}>
           Sincronizando comandas con salón...
         </div>
       ) : orders.length === 0 ? (
-        <div className="py-24 text-center space-y-2">
-          <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
-          <p className="font-bold text-sm">Sin comandas pendientes en cocina</p>
-          <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>Todo el servicio está despachado.</p>
+        <div className={`py-24 text-center space-y-3 rounded-2xl border ${
+          isDark ? 'border-zinc-800/80 bg-zinc-900/20' : 'border-slate-200 bg-white shadow-xs'
+        }`}>
+          <CheckCircle2 className="w-9 h-9 text-emerald-500 mx-auto" />
+          <div>
+            <p className={`font-bold text-sm ${isDark ? 'text-zinc-200' : 'text-slate-800'}`}>Sin comandas pendientes en cocina</p>
+            <p className={`text-xs mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>Todo el servicio está despachado.</p>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -181,74 +196,95 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
             return (
               <div
                 key={order.id}
-                className={`rounded-2xl border p-4 flex flex-col justify-between space-y-3.5 shadow-sm transition-all ${
+                className={`rounded-2xl border p-4 flex flex-col justify-between space-y-3.5 transition-all shadow-xs ${
                   isDark
-                    ? 'bg-zinc-900 border-zinc-800'
-                    : 'bg-white border-slate-200'
+                    ? 'bg-zinc-900/90 border-zinc-800'
+                    : 'bg-white border-slate-200 hover:shadow-md'
                 }`}
               >
-                {/* Cabecera de la tarjeta */}
+                {/* Cabecera de la comanda */}
                 <div className={`flex justify-between items-start border-b pb-3 ${isDark ? 'border-zinc-800' : 'border-slate-100'}`}>
                   <div>
                     <span className="text-[11px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
                       Mesa #{order.table?.table_number}
                     </span>
-                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white">{order.table?.name}</h3>
+                    <h3 className={`text-base font-extrabold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      {order.table?.name}
+                    </h3>
                   </div>
 
                   <span className={`inline-flex items-center gap-1 text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${
                     minutesAgo > 25
-                      ? 'text-rose-600 bg-rose-50 border-rose-200 animate-pulse'
-                      : 'text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20'
+                      ? 'text-rose-700 bg-rose-50 border-rose-300 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20 animate-pulse'
+                      : 'text-amber-800 bg-amber-50 border-amber-300 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20'
                   }`}>
-                    <Clock className="w-3 h-3" />
+                    <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                     {minutesAgo}m
                   </span>
                 </div>
 
-                {/* Filas de platos con interacción elegante */}
+                {/* Filas de platos con los 3 estados */}
                 <div className="space-y-2 flex-1">
                   {order.items.map((item) => {
-                    
-                    const isPreparing = item.status === 'preparing';
-                    const isReady = item.status === 'ready';
+                    const isPending = !item.status || item.status === 'pending';
+                    const isReady = item.status === 'ready' || item.status === 'preparing';
+                    const isCompleted = item.status === 'completed';
 
                     return (
                       <button
                         key={item.id}
+                        type="button"
                         onClick={() => toggleItemStatus(item)}
-                        className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all active:scale-[0.98] ${
-                          isReady
-                            ? 'bg-slate-50/60 dark:bg-zinc-950/60 border-slate-200 dark:border-zinc-800 opacity-60'
-                            : isPreparing
-                            ? 'bg-amber-50/50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30'
-                            : 'bg-white dark:bg-zinc-950/80 border-slate-200 dark:border-zinc-800 hover:border-slate-300'
+                        className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all duration-150 active:scale-[0.98] ${
+                          isPending
+                            ? isDark
+                              ? 'bg-amber-500/[0.08] border-amber-500/40 hover:border-amber-400'
+                              : 'bg-amber-50/50 border-amber-300 hover:border-amber-400 hover:bg-amber-50/80 shadow-xs'
+                            : isReady
+                            ? isDark
+                              ? 'bg-emerald-500/[0.12] border-emerald-500/50 hover:border-emerald-400'
+                              : 'bg-emerald-50/70 border-emerald-300 hover:border-emerald-400 shadow-xs'
+                            : isDark
+                            ? 'bg-zinc-950/50 border-zinc-800/80 opacity-50'
+                            : 'bg-slate-100/70 border-slate-200 opacity-60'
                         }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                          <span className={`font-mono font-black text-xs px-2 py-0.5 rounded-lg border ${
-                            isReady
-                              ? 'bg-slate-200 text-slate-600 border-slate-300 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700'
-                              : isPreparing
-                              ? 'bg-amber-500 text-white border-amber-600'
-                              : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700'
+                          <span className={`font-mono font-black text-xs px-2 py-0.5 rounded-lg border transition-colors ${
+                            isPending
+                              ? 'bg-amber-500 text-white border-amber-600 shadow-2xs'
+                              : isReady
+                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-2xs'
+                              : isDark
+                              ? 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                              : 'bg-slate-200 text-slate-600 border-slate-300'
                           }`}>
                             {item.quantity}x
                           </span>
-                          <span className="text-xs font-bold text-slate-800 dark:text-zinc-100 truncate">
+                          <span className={`text-xs font-bold truncate ${
+                            isCompleted
+                              ? 'line-through text-slate-500 dark:text-zinc-500'
+                              : isDark
+                              ? 'text-zinc-100'
+                              : 'text-slate-900'
+                          }`}>
                             {item.product?.name}
                           </span>
                         </div>
 
-                        {/* Badge de estado refinado */}
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold tracking-wider uppercase border shrink-0 ${
-                          isReady
-                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
-                            : isPreparing
-                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30'
-                            : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700'
+                        {/* Botón de acción con color representativo */}
+                        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-mono font-bold uppercase border shrink-0 transition-transform active:scale-95 ${
+                          isPending
+                            ? 'bg-amber-500 text-white border-amber-600 hover:bg-amber-600 shadow-xs'
+                            : isReady
+                            ? 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700 shadow-xs'
+                            : isDark
+                            ? 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                            : 'bg-slate-200 text-slate-700 border-slate-300'
                         }`}>
-                          {isReady ? 'Listo' : isPreparing ? 'Preparando' : 'Marchado'}
+                          {isPending && <Flame className="w-3 h-3 text-amber-100" />}
+                          {isReady && <Check className="w-3 h-3 text-emerald-100" />}
+                          {isPending ? 'Marchar' : isReady ? 'Listo' : 'Completado'}
                         </span>
                       </button>
                     );
@@ -257,10 +293,10 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
 
                 {/* Pie */}
                 <div className={`pt-2.5 border-t flex justify-between text-[11px] font-mono ${
-                  isDark ? 'border-zinc-800 text-zinc-500' : 'border-slate-100 text-slate-400'
+                  isDark ? 'border-zinc-800 text-zinc-500' : 'border-slate-100 text-slate-500'
                 }`}>
                   <span>Comanda #{order.order_number}</span>
-                  <span>Toca un plato para cambiar estado</span>
+                  <span>Toca un plato para avanzar</span>
                 </div>
               </div>
             );

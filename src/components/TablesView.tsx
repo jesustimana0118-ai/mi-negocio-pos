@@ -47,19 +47,23 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
       {/* Cabecera del Plano */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-extrabold flex items-center gap-2">
-            <LayoutGrid className="w-5 h-5 text-blue-600" />
+          <h2 className={`text-base font-extrabold flex items-center gap-2 ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+            <span className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 border border-blue-500/20">
+              <LayoutGrid className="w-4 h-4" />
+            </span>
             Control del Salón
           </h2>
-          <p className={`text-xs font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+          <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600 font-medium'}`}>
             Toca una mesa para abrir comanda o emitir precuenta
           </p>
         </div>
         <button
           onClick={loadTables}
           disabled={loading}
-          className={`p-2 rounded-xl border transition active:scale-95 ${
-            isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+          className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs ${
+            isDark
+              ? 'bg-zinc-800/90 border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-white'
+              : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-slate-200/50 hover:border-slate-300'
           }`}
           title="Refrescar mesas"
         >
@@ -67,9 +71,11 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
         </button>
       </div>
 
-      {/* Grid de Mesas: 3 Columnas compactas */}
+      {/* Grid de Mesas */}
       {loading ? (
-        <div className="py-24 text-center text-xs font-mono text-slate-400 animate-pulse">
+        <div className={`py-24 text-center text-xs font-mono animate-pulse rounded-2xl border ${
+          isDark ? 'border-zinc-800 text-zinc-500 bg-zinc-900/30' : 'border-slate-200 text-slate-500 bg-white/70 shadow-inner'
+        }`}>
           Sincronizando estado de las mesas...
         </div>
       ) : (
@@ -83,69 +89,79 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
               <button
                 key={table.id}
                 onClick={() => onSelectTable(table)}
-                className={`p-4 rounded-2xl border text-left transition-all duration-150 flex flex-col justify-between min-h-[125px] active:scale-[0.98] ${
+                className={`group p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between min-h-[125px] active:scale-[0.98] ${
                   isDark
                     ? isAvailable
-                      ? 'bg-zinc-950/80 border-zinc-800 hover:border-zinc-600'
+                      ? 'bg-zinc-950/80 border-zinc-800 hover:border-zinc-600 hover:shadow-lg hover:shadow-black/20'
                       : isOccupied
-                      ? 'bg-amber-500/[0.08] border-amber-500/40 hover:border-amber-500/60'
-                      : 'bg-blue-500/[0.08] border-blue-500/40 hover:border-blue-500/60'
+                      ? 'bg-amber-500/[0.08] border-amber-500/40 hover:border-amber-400 hover:shadow-lg hover:shadow-amber-500/5'
+                      : 'bg-blue-500/[0.08] border-blue-500/40 hover:border-blue-400 hover:shadow-lg hover:shadow-blue-500/5'
                     : isAvailable
-                    ? 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm'
+                    ? 'bg-gradient-to-b from-white via-white to-emerald-50/30 border-emerald-200/80 shadow-xs hover:shadow-md hover:border-emerald-400 hover:-translate-y-0.5'
                     : isOccupied
-                    ? 'bg-amber-50/40 border-amber-300 hover:border-amber-400 hover:shadow-sm'
-                    : 'bg-blue-50/40 border-blue-300 hover:border-blue-400 hover:shadow-sm'
+                    ? 'bg-gradient-to-b from-white via-amber-50/20 to-amber-100/30 border-amber-300 shadow-xs hover:shadow-md hover:border-amber-400 hover:-translate-y-0.5'
+                    : 'bg-gradient-to-b from-white via-blue-50/20 to-blue-100/30 border-blue-300 shadow-xs hover:shadow-md hover:border-blue-400 hover:-translate-y-0.5'
                 }`}
               >
                 {/* Cabecera */}
-                <div className="flex items-center justify-between w-full">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between w-full gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <span
-                      className={`w-7 h-7 rounded-xl flex items-center justify-center font-mono font-bold text-xs border ${
+                      className={`w-7 h-7 rounded-xl flex items-center justify-center font-mono font-bold text-xs border transition-colors ${
                         isAvailable
                           ? isDark
                             ? 'bg-zinc-800 border-zinc-700 text-zinc-200'
-                            : 'bg-slate-100 border-slate-200 text-slate-700'
+                            : 'bg-emerald-100/80 border-emerald-300 text-emerald-800 font-extrabold'
                           : isOccupied
-                          ? 'bg-amber-100 border-amber-300 text-amber-800 font-extrabold'
-                          : 'bg-blue-100 border-blue-300 text-blue-800 font-extrabold'
+                          ? isDark
+                            ? 'bg-amber-950/60 border-amber-700 text-amber-300 font-extrabold'
+                            : 'bg-amber-100 border-amber-300 text-amber-900 font-black'
+                          : isDark
+                          ? 'bg-blue-950/60 border-blue-700 text-blue-300 font-extrabold'
+                          : 'bg-blue-100 border-blue-300 text-blue-900 font-black'
                       }`}
                     >
                       {table.table_number}
                     </span>
-                    <span className="text-xs font-bold truncate max-w-[110px]">
+                    <span className={`text-xs font-bold truncate ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
                       {table.name}
                     </span>
                   </div>
 
-                  <span className={`flex items-center gap-1 text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
-                    <Users className="w-3 h-3 text-slate-400" />
+                  <span className={`flex items-center gap-1 text-[11px] font-mono shrink-0 ${
+                    isDark ? 'text-zinc-400' : 'text-slate-600 font-semibold'
+                  }`}>
+                    <Users className={`w-3.5 h-3.5 ${isDark ? 'text-zinc-500' : 'text-slate-500'}`} />
                     {table.capacity}
                   </span>
                 </div>
 
                 {/* Pie con Estado */}
-                <div className="pt-3 flex items-center justify-between">
+                <div className="pt-3 flex items-center justify-between w-full border-t border-dashed mt-3 ${
+                  isDark ? 'border-zinc-800' : 'border-slate-200/80'
+                }">
                   {isAvailable && (
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-500/20">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-300/80 dark:border-emerald-500/20 shadow-2xs">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       Disponible
                     </span>
                   )}
                   {isOccupied && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-500/20">
-                      <Clock className="w-3 h-3 text-amber-600" />
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-500/20 shadow-2xs">
+                      <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                       Ocupada
                     </span>
                   )}
                   {isBilled && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-500/20">
-                      <Receipt className="w-3 h-3 text-blue-600" />
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-blue-800 dark:text-blue-300 bg-blue-100/90 dark:bg-blue-500/10 px-2.5 py-0.5 rounded-full border border-blue-300 dark:border-blue-500/20 shadow-2xs">
+                      <Receipt className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                       Por Cobrar
                     </span>
                   )}
 
-                  <span className={`text-[10px] font-mono ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>
+                  <span className={`text-[10px] font-mono font-medium transition-transform group-hover:translate-x-0.5 ${
+                    isDark ? 'text-zinc-500 group-hover:text-zinc-300' : 'text-slate-500 group-hover:text-slate-900'
+                  }`}>
                     Ver →
                   </span>
                 </div>

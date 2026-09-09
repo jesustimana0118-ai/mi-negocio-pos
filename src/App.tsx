@@ -111,7 +111,7 @@ export default function App() {
     setRefreshKey((k) => k + 1);
   };
 
-  // Manejo del teclado numérico para el PIN Maestro 8068
+  // Manejo del teclado numérico para el PIN Maestro
   const handleNumClick = (num: string) => {
     if (enteredPin.length < 4) {
       const nextPin = enteredPin + num;
@@ -137,7 +137,7 @@ export default function App() {
     setPinError(false);
   };
 
-  // Si no está autenticado, mostrar pantalla de bloqueo PIN
+  // Pantalla de bloqueo con teclado táctil
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen w-full bg-[#0b0f17] text-slate-100 flex items-center justify-center p-4">
@@ -151,7 +151,7 @@ export default function App() {
             <p className="text-xs text-slate-400 font-mono">Ingresa el PIN maestro para desbloquear</p>
           </div>
 
-          {/* Círculos indicadores del PIN */}
+          {/* Indicadores visuales de dígitos */}
           <div className="flex gap-3 my-2">
             {[0, 1, 2, 3].map((i) => (
               <div
@@ -171,30 +171,34 @@ export default function App() {
             <span className="text-xs font-mono text-rose-400 font-bold animate-pulse">PIN Incorrecto</span>
           )}
 
-          {/* Teclado Numérico */}
+          {/* Teclado Táctil */}
           <div className="grid grid-cols-3 gap-3 w-full">
             {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
               <button
                 key={num}
+                type="button"
                 onClick={() => handleNumClick(num)}
-                className="h-14 bg-slate-800/80 hover:bg-slate-700 active:bg-sky-600 text-slate-100 font-mono font-bold text-lg rounded-2xl border border-slate-700/60 transition active:scale-95 shadow-sm"
+                className="h-14 bg-slate-800/80 hover:bg-slate-700 active:bg-sky-600 text-slate-100 font-mono font-bold text-lg rounded-2xl border border-slate-700/60 transition-all active:scale-95 shadow-xs cursor-pointer"
               >
                 {num}
               </button>
             ))}
             <button
+              type="button"
               onClick={handleClearPin}
-              className="h-14 bg-slate-800/80 hover:bg-slate-700 active:bg-slate-600 text-slate-400 hover:text-slate-200 font-mono text-sm rounded-2xl border border-slate-700/60 transition active:scale-95 flex items-center justify-center"
+              className="h-14 bg-slate-800/80 hover:bg-slate-700 active:bg-slate-600 text-slate-400 hover:text-slate-200 font-mono text-sm rounded-2xl border border-slate-700/60 transition-all active:scale-95 flex items-center justify-center cursor-pointer"
             >
               <Delete className="w-5 h-5" />
             </button>
             <button
+              type="button"
               onClick={() => handleNumClick('0')}
-              className="h-14 bg-slate-800/80 hover:bg-slate-700 active:bg-sky-600 text-slate-100 font-mono font-bold text-lg rounded-2xl border border-slate-700/60 transition active:scale-95 shadow-sm"
+              className="h-14 bg-slate-800/80 hover:bg-slate-700 active:bg-sky-600 text-slate-100 font-mono font-bold text-lg rounded-2xl border border-slate-700/60 transition-all active:scale-95 shadow-xs cursor-pointer"
             >
               0
             </button>
             <button
+              type="button"
               onClick={() => {
                 if (enteredPin === MASTER_PIN) setIsAuthenticated(true);
                 else {
@@ -202,7 +206,7 @@ export default function App() {
                   setTimeout(() => { setEnteredPin(''); setPinError(false); }, 800);
                 }
               }}
-              className="h-14 bg-sky-500 hover:bg-sky-400 text-slate-950 font-mono font-bold text-xs rounded-2xl transition active:scale-95 flex items-center justify-center shadow-md shadow-sky-500/20"
+              className="h-14 bg-sky-500 hover:bg-sky-400 text-slate-950 font-mono font-bold text-xs rounded-2xl transition-all active:scale-95 flex items-center justify-center shadow-md shadow-sky-500/20 cursor-pointer"
             >
               Entrar
             </button>
@@ -216,45 +220,45 @@ export default function App() {
     );
   }
 
-  // Interfaz Completa al estar Autenticado
+  // Interfaz Principal POS
   return (
     <main
       className={`min-h-screen w-full flex flex-col items-center p-3 sm:p-6 transition-colors duration-150 ${
-        isDark ? 'bg-[#090b10] text-zinc-100' : 'bg-slate-100 text-slate-800'
+        isDark ? 'bg-[#090b10] text-zinc-100' : 'bg-slate-100/90 text-slate-800'
       }`}
     >
       <div className="w-full max-w-7xl space-y-5">
         
-        {/* Barra superior con espacios limpios y separados */}
+        {/* Barra superior de navegación */}
         <header
           className={`flex flex-col lg:flex-row items-center justify-between p-3.5 sm:px-6 rounded-2xl border transition-all gap-4 ${
             isDark
               ? 'bg-zinc-900/90 border-zinc-800 shadow-xl'
-              : 'bg-white border-slate-200 shadow-sm'
+              : 'bg-white border-slate-200 shadow-xs'
           }`}
         >
-          {/* Marca / Logo */}
+          {/* Logo y Nombre Comercial */}
           <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-start shrink-0">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-xl bg-blue-600 text-white shadow-md shadow-blue-600/20">
                 <Store className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-sm font-black tracking-tight flex items-center gap-1.5">
+                <h1 className={`text-sm font-black tracking-tight flex items-center gap-1.5 ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
                   Mi Negocio POS
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 </h1>
-                <p className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                <p className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500 font-medium'}`}>
                   Salón, KDS, Bodega & Gerencia
                 </p>
               </div>
             </div>
 
-            {/* Móvil: Tema y Bloqueo */}
+            {/* Acciones Móviles */}
             <div className="flex lg:hidden items-center gap-2">
               <button
                 onClick={() => setTheme(isDark ? 'light' : 'dark')}
-                className={`p-2 rounded-xl border ${
+                className={`p-2 rounded-xl border cursor-pointer ${
                   isDark ? 'bg-zinc-800 border-zinc-700 text-amber-400' : 'bg-slate-100 border-slate-200 text-slate-700'
                 }`}
               >
@@ -262,7 +266,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setIsAuthenticated(false)}
-                className="px-2.5 py-1.5 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-xl text-xs font-bold"
+                className="px-2.5 py-1.5 bg-rose-500/10 text-rose-600 border border-rose-500/20 rounded-xl text-xs font-bold cursor-pointer"
                 title="Bloquear sistema"
               >
                 Bloquear
@@ -270,7 +274,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Menú de Módulos (Centro) */}
+          {/* Menú Central de Módulos */}
           <div
             className={`flex items-center p-1 rounded-xl border gap-1 overflow-x-auto max-w-full ${
               isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-100 border-slate-200'
@@ -278,9 +282,9 @@ export default function App() {
           >
             <button
               onClick={() => setCurrentView('salon')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition shrink-0 ${
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
                 currentView === 'salon'
-                  ? 'bg-blue-600 text-white shadow-sm'
+                  ? 'bg-blue-600 text-white shadow-xs'
                   : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -288,9 +292,9 @@ export default function App() {
             </button>
             <button
               onClick={() => setCurrentView('kitchen')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition shrink-0 ${
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
                 currentView === 'kitchen'
-                  ? 'bg-amber-500 text-zinc-950 shadow-sm'
+                  ? 'bg-amber-500 text-zinc-950 shadow-xs'
                   : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -298,9 +302,9 @@ export default function App() {
             </button>
             <button
               onClick={() => setCurrentView('inventory')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition shrink-0 ${
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
                 currentView === 'inventory'
-                  ? 'bg-emerald-600 text-white shadow-sm'
+                  ? 'bg-emerald-600 text-white shadow-xs'
                   : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -308,9 +312,9 @@ export default function App() {
             </button>
             <button
               onClick={() => setCurrentView('admin')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition shrink-0 ${
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
                 currentView === 'admin'
-                  ? 'bg-violet-600 text-white shadow-sm'
+                  ? 'bg-violet-600 text-white shadow-xs'
                   : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -318,14 +322,14 @@ export default function App() {
             </button>
           </div>
 
-          {/* Bloque Derecho */}
+          {/* Bloque Superior Derecho */}
           <div className="hidden lg:flex items-center gap-3 shrink-0">
             <button
               onClick={() => setTheme(isDark ? 'light' : 'dark')}
-              className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-2 transition active:scale-95 ${
+              className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-2 transition-all active:scale-95 cursor-pointer ${
                 isDark
                   ? 'bg-zinc-800 hover:bg-zinc-700 text-amber-300 border-zinc-700'
-                  : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 shadow-xs'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-xs'
               }`}
             >
               {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
@@ -336,17 +340,17 @@ export default function App() {
 
             <button
               onClick={() => setIsPinModalOpen(true)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition active:scale-95 ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all active:scale-95 cursor-pointer ${
                 isDark
                   ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border-zinc-700'
-                  : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200 shadow-xs'
+                  : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200 shadow-xs'
               }`}
             >
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
               <User className="w-3.5 h-3.5 text-slate-500" />
               <span>{activeStaff.name}</span>
               <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
-                isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-white border-slate-300 text-slate-600'
+                isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-slate-100 border-slate-300 text-slate-700 font-semibold'
               }`}>
                 PIN
               </span>
@@ -354,15 +358,14 @@ export default function App() {
 
             <button
               onClick={() => setIsClosingShift(true)}
-              className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 rounded-xl transition active:scale-95"
+              className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-400 border border-amber-500/30 rounded-xl transition-all active:scale-95 cursor-pointer shadow-2xs"
             >
               <Lock className="w-3.5 h-3.5" /> Cierre
             </button>
 
-            {/* Botón para Bloquear sesión */}
             <button
               onClick={() => setIsAuthenticated(false)}
-              className="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-500/30 rounded-xl text-xs font-bold transition active:scale-95"
+              className="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-500/30 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
               title="Bloquear sistema"
             >
               Bloquear
@@ -374,7 +377,7 @@ export default function App() {
         {currentView === 'salon' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
             <div
-              className={`lg:col-span-2 p-5 rounded-2xl border transition-colors shadow-sm ${
+              className={`lg:col-span-2 p-5 rounded-2xl border transition-colors shadow-xs ${
                 isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'
               }`}
             >
@@ -385,36 +388,40 @@ export default function App() {
               />
             </div>
 
-            {/* Panel Lateral */}
+            {/* Panel Lateral Derecho (Detalle de Mesa y Cobro) */}
             <div
-              className={`lg:col-span-1 p-5 rounded-2xl border transition-colors shadow-sm flex flex-col justify-between min-h-[440px] sticky top-4 ${
-                isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'
+              className={`lg:col-span-1 p-5 rounded-2xl border transition-colors shadow-xs flex flex-col justify-between min-h-[440px] sticky top-4 ${
+                isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
               }`}
             >
               {selectedTable ? (
                 <div className="space-y-4">
-                  <div className={`border-b pb-3 ${isDark ? 'border-zinc-800' : 'border-slate-200'}`}>
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold bg-slate-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700">
+                  <div className={`border-b pb-3 ${isDark ? 'border-zinc-800' : 'border-slate-100'}`}>
+                    <span className={`text-[10px] font-mono uppercase tracking-wider font-bold px-2 py-0.5 rounded-md border ${
+                      isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-blue-50 border-blue-200 text-blue-700'
+                    }`}>
                       Mesa Seleccionada
                     </span>
-                    <h3 className="text-xl font-black mt-1.5">{selectedTable.name}</h3>
-                    <p className={`text-xs font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                    <h3 className={`text-xl font-black mt-1.5 ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                      {selectedTable.name}
+                    </h3>
+                    <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600 font-medium'}`}>
                       Capacidad: {selectedTable.capacity} personas
                     </p>
                   </div>
 
                   <div
-                    className={`p-4 rounded-xl border space-y-2.5 ${
-                      isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-50 border-slate-200'
+                    className={`p-4 rounded-xl border space-y-2.5 transition-colors ${
+                      isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50 border-slate-200'
                     }`}
                   >
                     <div className="flex justify-between text-xs items-center">
-                      <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>Estado:</span>
+                      <span className={`font-semibold ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>Estado:</span>
                       <span
-                        className={`font-mono text-xs font-bold capitalize px-2.5 py-0.5 rounded-full border ${
+                        className={`font-mono text-xs font-bold capitalize px-2.5 py-0.5 rounded-full border shadow-2xs ${
                           selectedTable.status === 'occupied'
-                            ? 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20'
-                            : 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20'
+                            ? 'text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/20'
+                            : 'text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-500/10 border-emerald-300 dark:border-emerald-500/20'
                         }`}
                       >
                         {selectedTable.status === 'occupied' ? 'Ocupada' : 'Disponible'}
@@ -424,22 +431,30 @@ export default function App() {
                     {activeOrder && (
                       <div
                         className={`space-y-1.5 pt-2 border-t font-mono text-xs ${
-                          isDark ? 'border-zinc-800 text-zinc-300' : 'border-slate-200 text-slate-700'
+                          isDark ? 'border-zinc-800 text-zinc-300' : 'border-slate-200/80 text-slate-700'
                         }`}
                       >
                         <div className="flex justify-between">
                           <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>Comanda:</span>
-                          <span className="font-bold">#{activeOrder.order_number}</span>
+                          <span className={`font-bold ${isDark ? 'text-zinc-200' : 'text-slate-900'}`}>
+                            #{activeOrder.order_number}
+                          </span>
                         </div>
                         <div className="flex justify-between">
                           <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>Consumo Neto:</span>
-                          <span>${activeOrder.subtotal_net.toLocaleString('es-CL')}</span>
+                          <span className={isDark ? 'text-zinc-300' : 'text-slate-800 font-semibold'}>
+                            ${activeOrder.subtotal_net.toLocaleString('es-CL')}
+                          </span>
                         </div>
                         <div className="flex justify-between">
                           <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>IVA (19%):</span>
-                          <span>${activeOrder.iva_amount.toLocaleString('es-CL')}</span>
+                          <span className={isDark ? 'text-zinc-300' : 'text-slate-800 font-semibold'}>
+                            ${activeOrder.iva_amount.toLocaleString('es-CL')}
+                          </span>
                         </div>
-                        <div className="flex justify-between text-amber-700 dark:text-amber-400 font-bold">
+                        <div className={`flex justify-between font-bold ${
+                          isDark ? 'text-amber-400' : 'text-amber-800'
+                        }`}>
                           <span>Propina (10%):</span>
                           <span>${activeOrder.tip_amount.toLocaleString('es-CL')}</span>
                         </div>
@@ -449,7 +464,9 @@ export default function App() {
                           }`}
                         >
                           <span>Total:</span>
-                          <span className="tabular-nums">${activeOrder.total_amount.toLocaleString('es-CL')}</span>
+                          <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
+                            ${activeOrder.total_amount.toLocaleString('es-CL')}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -459,17 +476,17 @@ export default function App() {
                     <div className="space-y-2 pt-1">
                       <button
                         onClick={() => setIsPaying(true)}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-blue-600/20"
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md shadow-blue-600/20 cursor-pointer"
                       >
                         <CreditCard className="w-4 h-4" /> Cobrar (${activeOrder.total_amount.toLocaleString('es-CL')})
                       </button>
 
                       <button
                         onClick={() => setPrintingOrder({ id: activeOrder.id, isPrecuenta: true })}
-                        className={`w-full py-2.5 font-bold rounded-xl text-xs flex items-center justify-center gap-2 border transition active:scale-95 ${
+                        className={`w-full py-2.5 font-bold rounded-xl text-xs flex items-center justify-center gap-2 border transition-all active:scale-95 cursor-pointer ${
                           isDark
                             ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border-zinc-700'
-                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-xs'
                         }`}
                       >
                         <Printer className="w-4 h-4 text-slate-500" /> Imprimir Precuenta
@@ -478,7 +495,7 @@ export default function App() {
                   ) : (
                     <button
                       onClick={() => setIsOrdering(true)}
-                      className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-blue-600/20"
+                      className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md shadow-blue-600/20 cursor-pointer"
                     >
                       <PlusCircle className="w-4 h-4" /> Tomar Pedido ({activeStaff.name.split(' ')[0]})
                     </button>
@@ -487,20 +504,20 @@ export default function App() {
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-3">
                   <div
-                    className={`p-4 rounded-2xl border ${
-                      isDark ? 'bg-zinc-800/50 border-zinc-700 text-zinc-500' : 'bg-slate-50 border-slate-200 text-slate-400'
+                    className={`p-4 rounded-2xl border transition-colors ${
+                      isDark ? 'bg-zinc-800/50 border-zinc-700 text-zinc-500' : 'bg-slate-100 border-slate-200 text-slate-400'
                     }`}
                   >
                     <UtensilsCrossed className="w-7 h-7" />
                   </div>
-                  <p className={`text-xs max-w-[190px] ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  <p className={`text-xs max-w-[200px] font-medium ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
                     Toca cualquier mesa del plano para abrir su comanda o cobrar.
                   </p>
                 </div>
               )}
 
-              <div className={`pt-4 border-t ${isDark ? 'border-zinc-800' : 'border-slate-200'}`}>
-                <span className={`text-[10px] font-mono block text-center ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>
+              <div className={`pt-4 border-t ${isDark ? 'border-zinc-800' : 'border-slate-100'}`}>
+                <span className={`text-[10px] font-mono block text-center ${isDark ? 'text-zinc-500' : 'text-slate-400 font-medium'}`}>
                   Terminal Táctil • Mi Negocio POS
                 </span>
               </div>
@@ -510,19 +527,19 @@ export default function App() {
 
         {/* Demás Vistas */}
         {currentView === 'kitchen' && (
-          <div className={`p-5 rounded-2xl border shadow-sm ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
+          <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
             <KitchenView isDark={isDark} />
           </div>
         )}
 
         {currentView === 'inventory' && (
-          <div className={`p-5 rounded-2xl border shadow-sm ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
+          <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
             <InventoryView isDark={isDark} />
           </div>
         )}
 
         {currentView === 'admin' && (
-          <div className={`p-5 rounded-2xl border shadow-sm ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
+          <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
             <AdminDashboardView isDark={isDark} />
           </div>
         )}
@@ -552,6 +569,7 @@ export default function App() {
         <CheckoutModal
           table={selectedTable}
           order={activeOrder}
+          isDark={isDark}
           onClose={() => setIsPaying(false)}
           onPaymentSuccess={handlePaymentSuccess}
         />
