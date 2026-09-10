@@ -3,16 +3,35 @@ import { supabase } from '../lib/supabase';
 import type { RestaurantTable } from '../types/database';
 import { 
   Users, Clock, Receipt, RefreshCw, 
-  LayoutGrid, Plus, Trash2, X, Armchair 
+  LayoutGrid, Plus, Trash2, X, Armchair, ShoppingBag, ArrowRight
 } from 'lucide-react';
+
+interface OpenTakeoutOrder {
+  id: string;
+  order_number: number;
+  waiter_name: string;
+  subtotal_net: number;
+  iva_amount: number;
+  tip_amount: number;
+  total_amount: number;
+  created_at: string;
+}
 
 interface TablesViewProps {
   onSelectTable: (table: RestaurantTable) => void;
+  onNewTakeoutOrder: () => void;
+  onSelectTakeoutOrder: (order: OpenTakeoutOrder) => void;
   isDark?: boolean;
 }
 
-export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
+export function TablesView({ 
+  onSelectTable, 
+  onNewTakeoutOrder,
+  onSelectTakeoutOrder,
+  isDark = true 
+}: TablesViewProps) {
   const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [takeoutOrders, setTakeoutOrders] = useState<OpenTakeoutOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Estados del modal de nueva mesa
@@ -22,38 +41,56 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
   const [tableCapacity, setTableCapacity] = useState('4');
   const [submitting, setSubmitting] = useState(false);
 
-  async function loadTables() {
+  async function loadData() {
     setLoading(true);
-    const { data, error } = await supabase
+    // 1. Cargar Mesas
+    const { data: tablesData } = await supabase
       .from('restaurant_tables')
       .select('*')
       .order('table_number', { ascending: true });
 
-    if (!error && data) {
-      setTables(data as RestaurantTable[]);
+    if (tablesData) {
+      setTables(tablesData as RestaurantTable[]);
     }
+
+    // 2. Cargar Pedidos Para Llevar Activos (table_id null y status open)
+    const { data: takeoutsData } = await supabase
+      .from('orders')
+      .select('id, order_number, waiter_name, subtotal_net, iva_amount, tip_amount, total_amount, created_at')
+      .is('table_id', null)
+      .eq('status', 'open')
+      .order('created_at', { ascending: false });
+
+    if (takeoutsData) {
+      setTakeoutOrders(takeoutsData as OpenTakeoutOrder[]);
+    }
+
     setLoading(false);
   }
 
   useEffect(() => {
-    loadTables();
+    loadData();
 
-    const channel = supabase
-      .channel('realtime_tables')
+    const tablesChannel = supabase
+      .channel('realtime_tables_view')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'restaurant_tables' },
-        () => loadTables()
+        () => loadData()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        () => loadData()
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(tablesChannel);
     };
   }, []);
 
   const handleOpenCreateModal = () => {
-    // Sugerir el siguiente número correlativo disponible
     const nextNum = tables.length > 0 
       ? Math.max(...tables.map((t) => t.table_number || 0)) + 1 
       : 1;
@@ -88,7 +125,7 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
 
       if (error) {
         if (error.code === '23505') {
-          alert(`Ya existe una mesa registrada con el número ${num}. Elige otro número.`);
+          alert(`Ya existe una mesa registrada con el número ${num}.`);
         } else {
           throw error;
         }
@@ -109,15 +146,15 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
   };
 
   const handleDeleteTable = async (e: React.MouseEvent, table: RestaurantTable) => {
-    e.stopPropagation(); // Evita seleccionar la mesa para abrir comanda
+    e.stopPropagation();
 
     if (table.status === 'occupied') {
-      alert('No puedes eliminar una mesa que actualmente está ocupada.');
+      alert('No puedes eliminar una mesa que está ocupada.');
       return;
     }
 
     const confirmed = window.confirm(
-      `¿Seguro que deseas eliminar permanentemente la "${table.name}" (#${table.table_number})?`
+      `¿Seguro que deseas eliminar la "${table.name}" (#${table.table_number})?`
     );
     if (!confirmed) return;
 
@@ -129,7 +166,7 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
 
       if (error) {
         if (error.code === '23503') {
-          alert(`No se puede eliminar la mesa porque tiene órdenes históricas asociadas en el sistema.`);
+          alert(`No se puede eliminar la mesa porque tiene historial de órdenes.`);
         } else {
           throw error;
         }
@@ -144,57 +181,123 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
 
   return (
     <div className="space-y-4">
-      {/* Cabecera del Plano */}
-      <div className="flex items-center justify-between gap-3">
+      {/* Cabecera del Salón */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className={`text-base font-extrabold flex items-center gap-2 ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
             <span className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 border border-blue-500/20">
               <LayoutGrid className="w-4 h-4" />
             </span>
-            Control del Salón
+            Control del Salón & Mostrador
           </h2>
           <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600 font-medium'}`}>
-            {tables.length} mesas configuradas • Toca una mesa para operar
+            {tables.length} mesas • {takeoutOrders.length} pedido(s) para llevar activos
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={onNewTakeoutOrder}
+            className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-violet-500/20 cursor-pointer"
+          >
+            <ShoppingBag className="w-4 h-4" /> + Para Llevar
+          </button>
+
           <button
             onClick={handleOpenCreateModal}
-            className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-xs cursor-pointer"
+            className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 border cursor-pointer ${
+              isDark
+                ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
+                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-xs'
+            }`}
           >
             <Plus className="w-4 h-4" /> Nueva Mesa
           </button>
 
           <button
-            onClick={loadTables}
+            onClick={loadData}
             disabled={loading}
             className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs cursor-pointer ${
               isDark
                 ? 'bg-zinc-800/90 border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-white'
                 : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
             }`}
-            title="Refrescar mesas"
+            title="Refrescar estado"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} />
           </button>
         </div>
       </div>
 
+      {/* Pedidos Para Llevar Activos */}
+      {takeoutOrders.length > 0 && (
+        <div className={`p-3.5 rounded-2xl border space-y-2.5 transition-all ${
+          isDark 
+            ? 'bg-violet-950/20 border-violet-500/30' 
+            : 'bg-violet-50/60 border-violet-200 shadow-xs'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold font-mono text-violet-700 dark:text-violet-300 flex items-center gap-1.5 uppercase tracking-wide">
+              <ShoppingBag className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+              Retiro en Mostrador ({takeoutOrders.length})
+            </span>
+            <span className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+              Toca para cobrar o revisar
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+            {takeoutOrders.map((order) => {
+              const minutesAgo = Math.floor(
+                (Date.now() - new Date(order.created_at).getTime()) / 60000
+              );
+              const clientName = order.waiter_name?.replace('Para Llevar • ', '') || 'Mostrador';
+
+              return (
+                <button
+                  key={order.id}
+                  onClick={() => onSelectTakeoutOrder(order)}
+                  className={`p-3 rounded-xl border text-left transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between ${
+                    isDark
+                      ? 'bg-zinc-900 border-zinc-800 hover:border-violet-500/60'
+                      : 'bg-white border-slate-200 hover:border-violet-400 shadow-xs'
+                  }`}
+                >
+                  <div className="min-w-0 pr-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">
+                        #{order.order_number}
+                      </span>
+                      <span className={`text-xs font-bold truncate ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                        {clientName}
+                      </span>
+                    </div>
+                    <div className={`text-[11px] font-mono mt-1 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                      Hace {minutesAgo}m • <strong className="text-emerald-600 dark:text-emerald-400 font-bold">${order.total_amount.toLocaleString('es-CL')}</strong>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-violet-500 shrink-0" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Grid de Mesas */}
       {loading ? (
         <div className={`py-24 text-center text-xs font-mono animate-pulse rounded-2xl border ${
           isDark ? 'border-zinc-800 text-zinc-500 bg-zinc-900/30' : 'border-slate-200 text-slate-500 bg-white/70 shadow-inner'
         }`}>
-          Sincronizando estado de las mesas...
+          Sincronizando estado...
         </div>
       ) : tables.length === 0 ? (
         <div className={`py-20 text-center space-y-3 rounded-2xl border ${
           isDark ? 'border-zinc-800 bg-zinc-900/40 text-zinc-400' : 'border-slate-200 bg-white text-slate-500 shadow-xs'
         }`}>
           <Armchair className="w-10 h-10 mx-auto text-slate-400" />
-          <p className="font-bold text-sm">No hay mesas creadas en el salón</p>
-          <p className="text-xs">Usa el botón "+ Nueva Mesa" para comenzar a configurar el plano.</p>
+          <p className="font-bold text-sm">No hay mesas creadas</p>
+          <p className="text-xs">Crea una mesa o toma pedidos "Para Llevar".</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
@@ -254,7 +357,6 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
                       {table.capacity}
                     </span>
 
-                    {/* Botón Eliminar Mesa (visible al pasar el cursor si está disponible) */}
                     {isAvailable && (
                       <button
                         type="button"
@@ -303,7 +405,7 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
         </div>
       )}
 
-      {/* Modal para Crear Nueva Mesa */}
+      {/* Modal Nueva Mesa */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3">
           <div className={`w-full max-w-sm rounded-2xl p-5 shadow-2xl space-y-4 border transition-all ${

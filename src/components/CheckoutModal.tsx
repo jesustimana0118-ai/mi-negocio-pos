@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import type { RestaurantTable } from '../types/database';
 import { 
   X, Banknote, CreditCard, 
-  ArrowRightLeft, Receipt, Check, Utensils, HeartHandshake, Loader2 
+  ArrowRightLeft, Receipt, Check, Utensils, HeartHandshake, Loader2, ShoppingBag 
 } from 'lucide-react';
 
 interface ActiveOrder {
@@ -13,6 +13,7 @@ interface ActiveOrder {
   iva_amount: number;
   tip_amount: number;
   total_amount: number;
+  waiter_name?: string;
 }
 
 interface OrderItemDetail {
@@ -26,7 +27,7 @@ interface OrderItemDetail {
 }
 
 interface CheckoutModalProps {
-  table: RestaurantTable;
+  table?: RestaurantTable | null;
   order: ActiveOrder;
   onClose: () => void;
   onPaymentSuccess: () => void;
@@ -48,10 +49,9 @@ export function CheckoutModal({
   const [items, setItems] = useState<OrderItemDetail[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
 
-  // Cálculo de Base Imponible y Propina Sugerida (10%)
   const baseTotal = (order.subtotal_net || 0) + (order.iva_amount || 0) || order.total_amount;
   const suggestedTip = Math.round(baseTotal * 0.10);
-  const [includeTip, setIncludeTip] = useState<boolean>(true);
+  const [includeTip, setIncludeTip] = useState<boolean>(!table ? false : true);
 
   const currentTip = includeTip ? (order.tip_amount > 0 ? order.tip_amount : suggestedTip) : 0;
   const finalTotal = baseTotal + currentTip;
@@ -59,7 +59,6 @@ export function CheckoutModal({
   const receivedNum = Number(cashReceived) || 0;
   const change = receivedNum > finalTotal ? receivedNum - finalTotal : 0;
 
-  // Cargar el desglose de productos de la comanda
   useEffect(() => {
     async function fetchOrderItems() {
       setLoadingItems(true);
@@ -85,7 +84,7 @@ export function CheckoutModal({
   const handleProcessPayment = async () => {
     setProcessing(true);
     try {
-      // 1. Marcar orden como pagada con propina y total actualizados
+      // 1. Marcar orden como pagada
       const { error: orderError } = await supabase
         .from('orders')
         .update({
@@ -99,21 +98,25 @@ export function CheckoutModal({
 
       if (orderError) throw orderError;
 
-      // 2. Liberar la mesa
-      const { error: tableError } = await supabase
-        .from('restaurant_tables')
-        .update({ status: 'available' })
-        .eq('id', table.id);
+      // 2. Liberar la mesa física si aplica
+      if (table && table.id) {
+        const { error: tableError } = await supabase
+          .from('restaurant_tables')
+          .update({ status: 'available' })
+          .eq('id', table.id);
 
-      if (tableError) throw tableError;
+        if (tableError) throw tableError;
+      }
 
       onPaymentSuccess();
-    } catch (err) {
+    } catch (err: any) {
       alert('Error al liquidar la cuenta: ' + (err instanceof Error ? err.message : 'Error de red'));
     } finally {
       setProcessing(false);
     }
   };
+
+  const displayName = table ? table.name : (order.waiter_name?.replace('Para Llevar • ', '') || 'Para Llevar');
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3">
@@ -126,18 +129,22 @@ export function CheckoutModal({
         }`}>
           <div>
             <h3 className="font-bold text-base flex items-center gap-2">
-              <span className="p-1 rounded-lg bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                <Receipt className="w-4 h-4" />
+              <span className={`p-1 rounded-lg border ${
+                table 
+                  ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+                  : 'bg-violet-500/10 text-violet-400 border-violet-500/20'
+              }`}>
+                {table ? <Receipt className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
               </span>
-              Cobro • {table.name}
+              Cobro • {displayName}
             </h3>
             <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
-              Orden #{order.order_number}
+              Orden #{order.order_number} {!table && '• Pedido Para Llevar'}
             </p>
           </div>
           <button 
             onClick={onClose} 
-            className={`p-1.5 rounded-lg transition ${
+            className={`p-1.5 rounded-lg transition cursor-pointer ${
               isDark ? 'text-zinc-400 hover:text-zinc-100 bg-zinc-800/60' : 'text-slate-400 hover:text-slate-800 bg-slate-100'
             }`}
           >
@@ -145,13 +152,13 @@ export function CheckoutModal({
           </button>
         </div>
 
-        {/* Desglose de Productos Consumidos */}
+        {/* Desglose de Productos */}
         <div className="space-y-1.5 shrink-0">
           <label className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
             isDark ? 'text-zinc-400' : 'text-slate-600'
           }`}>
             <Utensils className="w-3.5 h-3.5 text-blue-500" />
-            Detalle del Consumo:
+            Detalle del Pedido:
           </label>
           
           <div className={`rounded-xl border p-3 max-h-36 overflow-y-auto space-y-2 ${
@@ -160,7 +167,7 @@ export function CheckoutModal({
             {loadingItems ? (
               <div className="flex items-center justify-center gap-2 py-3 text-xs font-mono text-zinc-500">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" />
-                Cargando ítems de la orden...
+                Cargando ítems...
               </div>
             ) : items.length === 0 ? (
               <p className="text-xs text-center py-2 text-zinc-500 font-mono">Sin ítems registrados en esta orden</p>
@@ -191,7 +198,7 @@ export function CheckoutModal({
           </div>
         </div>
 
-        {/* Selector de Propina Sugerida (10%) */}
+        {/* Propina Sugerida */}
         <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
           includeTip
             ? isDark
@@ -211,7 +218,7 @@ export function CheckoutModal({
           <button
             type="button"
             onClick={() => setIncludeTip((prev) => !prev)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 border ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 border cursor-pointer ${
               includeTip
                 ? 'bg-amber-500 text-zinc-950 border-amber-400 shadow-xs'
                 : isDark
@@ -223,7 +230,7 @@ export function CheckoutModal({
           </button>
         </div>
 
-        {/* Resumen de Total a Pagar */}
+        {/* Totales */}
         <div className={`p-3.5 rounded-xl border space-y-2 ${
           isDark ? 'bg-zinc-950/90 border-zinc-800' : 'bg-slate-50 border-slate-200 shadow-2xs'
         }`}>
@@ -244,7 +251,7 @@ export function CheckoutModal({
           </div>
         </div>
 
-        {/* Selector de Medios de Pago */}
+        {/* Medios de Pago */}
         <div className="space-y-1.5">
           <label className={`text-xs font-medium ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
             Medio de Pago:
@@ -253,7 +260,7 @@ export function CheckoutModal({
             <button
               type="button"
               onClick={() => setMethod('card_debit')}
-              className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-bold transition-all active:scale-95 ${
+              className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-bold transition-all active:scale-95 cursor-pointer ${
                 method === 'card_debit'
                   ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-2xs'
                   : isDark
@@ -267,7 +274,7 @@ export function CheckoutModal({
             <button
               type="button"
               onClick={() => setMethod('card_credit')}
-              className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-bold transition-all active:scale-95 ${
+              className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-bold transition-all active:scale-95 cursor-pointer ${
                 method === 'card_credit'
                   ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-2xs'
                   : isDark
@@ -281,7 +288,7 @@ export function CheckoutModal({
             <button
               type="button"
               onClick={() => setMethod('cash')}
-              className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-bold transition-all active:scale-95 ${
+              className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-bold transition-all active:scale-95 cursor-pointer ${
                 method === 'cash'
                   ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-2xs'
                   : isDark
@@ -295,7 +302,7 @@ export function CheckoutModal({
             <button
               type="button"
               onClick={() => setMethod('transfer')}
-              className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-bold transition-all active:scale-95 ${
+              className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-bold transition-all active:scale-95 cursor-pointer ${
                 method === 'transfer'
                   ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-2xs'
                   : isDark
@@ -308,7 +315,7 @@ export function CheckoutModal({
           </div>
         </div>
 
-        {/* Input de Efectivo / Vuelto */}
+        {/* Efectivo / Vuelto */}
         {method === 'cash' && (
           <div className={`p-3 rounded-xl border space-y-2 font-mono ${
             isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50 border-slate-200'
@@ -337,7 +344,7 @@ export function CheckoutModal({
           </div>
         )}
 
-        {/* Botón Final de Cobro */}
+        {/* Botón Final */}
         <button
           onClick={handleProcessPayment}
           disabled={processing}
@@ -345,11 +352,11 @@ export function CheckoutModal({
         >
           {processing ? (
             <span className="animate-pulse flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" /> Procesando y Descontando Stock...
+              <Loader2 className="w-4 h-4 animate-spin" /> Procesando Cobro...
             </span>
           ) : (
             <>
-              <Check className="w-5 h-5 stroke-[3]" /> Liquidar y Liberar Mesa
+              <Check className="w-5 h-5 stroke-[3]" /> Liquidar Pedido
             </>
           )}
         </button>

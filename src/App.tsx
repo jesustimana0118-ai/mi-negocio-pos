@@ -13,8 +13,7 @@ import type { RestaurantTable } from './types/database';
 import { 
   UtensilsCrossed, Store, PlusCircle, 
   CreditCard, Lock, ChefHat, LayoutGrid, Boxes, TrendingUp, Printer,
-  User, Sun, Moon, ShieldCheck, Delete
-} from 'lucide-react';
+User, Sun, Moon, ShieldCheck, Delete} from 'lucide-react';
 
 interface ActiveOrderSummary {
   id: string;
@@ -23,22 +22,26 @@ interface ActiveOrderSummary {
   iva_amount: number;
   tip_amount: number;
   total_amount: number;
+  waiter_name?: string;
 }
 
 const CURRENT_SHIFT_ID = '11111111-2222-3333-4444-555555555555';
 const MASTER_PIN = '8068';
 
 export default function App() {
-  // Estado de Autenticación General con PIN Maestro
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [enteredPin, setEnteredPin] = useState('');
   const [pinError, setPinError] = useState(false);
 
   const [currentView, setCurrentView] = useState<'salon' | 'kitchen' | 'inventory' | 'admin'>('salon');
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
+  
   const [selectedTable, setSelectedTable] = useState<RestaurantTable | null>(null);
+  const [selectedTakeout, setSelectedTakeout] = useState<ActiveOrderSummary | null>(null);
   const [activeOrder, setActiveOrder] = useState<ActiveOrderSummary | null>(null);
+
   const [isOrdering, setIsOrdering] = useState(false);
+  const [isTakeoutOrdering, setIsTakeoutOrdering] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [isClosingShift, setIsClosingShift] = useState(false);
   const [printingOrder, setPrintingOrder] = useState<{ id: string; isPrecuenta: boolean } | null>(null);
@@ -69,16 +72,17 @@ export default function App() {
     loadDefaultStaff();
   }, []);
 
+  // Cargar orden activa de mesa seleccionada
   useEffect(() => {
     async function loadTableOrder() {
       if (!selectedTable || selectedTable.status !== 'occupied') {
-        setActiveOrder(null);
+        if (!selectedTakeout) setActiveOrder(null);
         return;
       }
 
       const { data } = await supabase
         .from('orders')
-        .select('id, order_number, subtotal_net, iva_amount, tip_amount, total_amount')
+        .select('id, order_number, subtotal_net, iva_amount, tip_amount, total_amount, waiter_name')
         .eq('table_id', selectedTable.id)
         .eq('status', 'open')
         .order('created_at', { ascending: false })
@@ -88,30 +92,41 @@ export default function App() {
       setActiveOrder(data as ActiveOrderSummary | null);
     }
 
-    loadTableOrder();
+    if (selectedTable) {
+      loadTableOrder();
+    }
   }, [selectedTable, refreshKey]);
 
   const handleTableClick = (table: RestaurantTable) => {
+    setSelectedTakeout(null);
     setSelectedTable(table);
     if (table.status === 'available') {
       setIsOrdering(true);
     }
   };
 
+  const handleSelectTakeoutOrder = (order: ActiveOrderSummary) => {
+    setSelectedTable(null);
+    setSelectedTakeout(order);
+    setActiveOrder(order);
+  };
+
   const handleOrderSuccess = () => {
     setIsOrdering(false);
+    setIsTakeoutOrdering(false);
     setSelectedTable(null);
+    setSelectedTakeout(null);
     setRefreshKey((k) => k + 1);
   };
 
   const handlePaymentSuccess = () => {
     setIsPaying(false);
     setSelectedTable(null);
+    setSelectedTakeout(null);
     setActiveOrder(null);
     setRefreshKey((k) => k + 1);
   };
 
-  // Manejo del teclado numérico para el PIN Maestro
   const handleNumClick = (num: string) => {
     if (enteredPin.length < 4) {
       const nextPin = enteredPin + num;
@@ -137,7 +152,6 @@ export default function App() {
     setPinError(false);
   };
 
-  // Pantalla de bloqueo con teclado táctil
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen w-full bg-[#0b0f17] text-slate-100 flex items-center justify-center p-4">
@@ -151,7 +165,6 @@ export default function App() {
             <p className="text-xs text-slate-400 font-mono">Ingresa el PIN maestro para desbloquear</p>
           </div>
 
-          {/* Indicadores visuales de dígitos */}
           <div className="flex gap-3 my-2">
             {[0, 1, 2, 3].map((i) => (
               <div
@@ -171,7 +184,6 @@ export default function App() {
             <span className="text-xs font-mono text-rose-400 font-bold animate-pulse">PIN Incorrecto</span>
           )}
 
-          {/* Teclado Táctil */}
           <div className="grid grid-cols-3 gap-3 w-full">
             {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
               <button
@@ -220,7 +232,6 @@ export default function App() {
     );
   }
 
-  // Interfaz Principal POS
   return (
     <main
       className={`min-h-screen w-full flex flex-col items-center p-3 sm:p-6 transition-colors duration-150 ${
@@ -229,7 +240,7 @@ export default function App() {
     >
       <div className="w-full max-w-7xl space-y-5">
         
-        {/* Barra superior de navegación */}
+        {/* Barra superior */}
         <header
           className={`flex flex-col lg:flex-row items-center justify-between p-3.5 sm:px-6 rounded-2xl border transition-all gap-4 ${
             isDark
@@ -237,7 +248,6 @@ export default function App() {
               : 'bg-white border-slate-200 shadow-xs'
           }`}
         >
-          {/* Logo y Nombre Comercial */}
           <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-start shrink-0">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-xl bg-blue-600 text-white shadow-md shadow-blue-600/20">
@@ -254,7 +264,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Acciones Móviles */}
             <div className="flex lg:hidden items-center gap-2">
               <button
                 onClick={() => setTheme(isDark ? 'light' : 'dark')}
@@ -267,14 +276,12 @@ export default function App() {
               <button
                 onClick={() => setIsAuthenticated(false)}
                 className="px-2.5 py-1.5 bg-rose-500/10 text-rose-600 border border-rose-500/20 rounded-xl text-xs font-bold cursor-pointer"
-                title="Bloquear sistema"
               >
                 Bloquear
               </button>
             </div>
           </div>
 
-          {/* Menú Central de Módulos */}
           <div
             className={`flex items-center p-1 rounded-xl border gap-1 overflow-x-auto max-w-full ${
               isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-100 border-slate-200'
@@ -322,7 +329,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Bloque Superior Derecho */}
           <div className="hidden lg:flex items-center gap-3 shrink-0">
             <button
               onClick={() => setTheme(isDark ? 'light' : 'dark')}
@@ -373,7 +379,7 @@ export default function App() {
           </div>
         </header>
 
-        {/* Vista del Salón */}
+        {/* Vista Salón */}
         {currentView === 'salon' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
             <div
@@ -385,28 +391,32 @@ export default function App() {
                 key={refreshKey}
                 isDark={isDark}
                 onSelectTable={(table) => handleTableClick(table)}
+                onNewTakeoutOrder={() => setIsTakeoutOrdering(true)}
+                onSelectTakeoutOrder={(order) => handleSelectTakeoutOrder(order)}
               />
             </div>
 
-            {/* Panel Lateral Derecho (Detalle de Mesa y Cobro) */}
+            {/* Panel Lateral */}
             <div
               className={`lg:col-span-1 p-5 rounded-2xl border transition-colors shadow-xs flex flex-col justify-between min-h-[440px] sticky top-4 ${
                 isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
               }`}
             >
-              {selectedTable ? (
+              {selectedTable || selectedTakeout ? (
                 <div className="space-y-4">
                   <div className={`border-b pb-3 ${isDark ? 'border-zinc-800' : 'border-slate-100'}`}>
                     <span className={`text-[10px] font-mono uppercase tracking-wider font-bold px-2 py-0.5 rounded-md border ${
-                      isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-blue-50 border-blue-200 text-blue-700'
+                      selectedTable
+                        ? isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-blue-50 border-blue-200 text-blue-700'
+                        : isDark ? 'bg-violet-950/60 border-violet-700 text-violet-300' : 'bg-violet-50 border-violet-200 text-violet-700'
                     }`}>
-                      Mesa Seleccionada
+                      {selectedTable ? 'Mesa Seleccionada' : 'Pedido Para Llevar'}
                     </span>
-                    <h3 className={`text-xl font-black mt-1.5 ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
-                      {selectedTable.name}
+                    <h3 className={`text-xl font-black mt-1.5 truncate ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                      {selectedTable ? selectedTable.name : (selectedTakeout?.waiter_name?.replace('Para Llevar • ', '') || 'Para Llevar')}
                     </h3>
                     <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600 font-medium'}`}>
-                      Capacidad: {selectedTable.capacity} personas
+                      {selectedTable ? `Capacidad: ${selectedTable.capacity} personas` : 'Retiro en mostrador'}
                     </p>
                   </div>
 
@@ -419,12 +429,14 @@ export default function App() {
                       <span className={`font-semibold ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>Estado:</span>
                       <span
                         className={`font-mono text-xs font-bold capitalize px-2.5 py-0.5 rounded-full border shadow-2xs ${
-                          selectedTable.status === 'occupied'
-                            ? 'text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/20'
-                            : 'text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-500/10 border-emerald-300 dark:border-emerald-500/20'
+                          selectedTable
+                            ? selectedTable.status === 'occupied'
+                              ? 'text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/20'
+                              : 'text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-500/10 border-emerald-300 dark:border-emerald-500/20'
+                            : 'text-violet-800 dark:text-violet-300 bg-violet-100 dark:bg-violet-500/10 border-violet-300 dark:border-violet-500/20'
                         }`}
                       >
-                        {selectedTable.status === 'occupied' ? 'Ocupada' : 'Disponible'}
+                        {selectedTable ? (selectedTable.status === 'occupied' ? 'Ocupada' : 'Disponible') : 'Por Entregar'}
                       </span>
                     </div>
 
@@ -455,7 +467,7 @@ export default function App() {
                         <div className={`flex justify-between font-bold ${
                           isDark ? 'text-amber-400' : 'text-amber-800'
                         }`}>
-                          <span>Propina (10%):</span>
+                          <span>Propina:</span>
                           <span>${activeOrder.tip_amount.toLocaleString('es-CL')}</span>
                         </div>
                         <div
@@ -472,11 +484,16 @@ export default function App() {
                     )}
                   </div>
 
-                  {selectedTable.status === 'occupied' && activeOrder ? (
+                  {/* Acciones de Cobro */}
+                  {activeOrder ? (
                     <div className="space-y-2 pt-1">
                       <button
                         onClick={() => setIsPaying(true)}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md shadow-blue-600/20 cursor-pointer"
+                        className={`w-full py-3 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md cursor-pointer ${
+                          selectedTakeout 
+                            ? 'bg-violet-600 hover:bg-violet-500 shadow-violet-600/20' 
+                            : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'
+                        }`}
                       >
                         <CreditCard className="w-4 h-4" /> Cobrar (${activeOrder.total_amount.toLocaleString('es-CL')})
                       </button>
@@ -489,16 +506,18 @@ export default function App() {
                             : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-xs'
                         }`}
                       >
-                        <Printer className="w-4 h-4 text-slate-500" /> Imprimir Precuenta
+                        <Printer className="w-4 h-4 text-slate-500" /> Imprimir Comanda / Ticket
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => setIsOrdering(true)}
-                      className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md shadow-blue-600/20 cursor-pointer"
-                    >
-                      <PlusCircle className="w-4 h-4" /> Tomar Pedido ({activeStaff.name.split(' ')[0]})
-                    </button>
+                    selectedTable && (
+                      <button
+                        onClick={() => setIsOrdering(true)}
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md shadow-blue-600/20 cursor-pointer"
+                      >
+                        <PlusCircle className="w-4 h-4" /> Tomar Pedido ({activeStaff.name.split(' ')[0]})
+                      </button>
+                    )
                   )}
                 </div>
               ) : (
@@ -511,7 +530,7 @@ export default function App() {
                     <UtensilsCrossed className="w-7 h-7" />
                   </div>
                   <p className={`text-xs max-w-[200px] font-medium ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
-                    Toca cualquier mesa del plano para abrir su comanda o cobrar.
+                    Toca una mesa o un pedido para llevar para operar.
                   </p>
                 </div>
               )}
@@ -556,16 +575,29 @@ export default function App() {
         />
       )}
 
+      {/* Modal para pedidos en mesa */}
       {isOrdering && selectedTable && (
         <POSOrderModal
           table={selectedTable}
+          isTakeout={false}
           waiterName={activeStaff.name}
           onClose={() => setIsOrdering(false)}
           onOrderSuccess={handleOrderSuccess}
         />
       )}
 
-      {isPaying && selectedTable && activeOrder && (
+      {/* Modal para pedidos para llevar */}
+      {isTakeoutOrdering && (
+        <POSOrderModal
+          table={null}
+          isTakeout={true}
+          waiterName={activeStaff.name}
+          onClose={() => setIsTakeoutOrdering(false)}
+          onOrderSuccess={handleOrderSuccess}
+        />
+      )}
+
+      {isPaying && activeOrder && (
         <CheckoutModal
           table={selectedTable}
           order={activeOrder}
@@ -583,11 +615,11 @@ export default function App() {
         />
       )}
 
-      {printingOrder && selectedTable && (
+      {printingOrder && (
         <ReceiptModal
           orderId={printingOrder.id}
-          tableName={selectedTable.name}
-          tableNumber={selectedTable.table_number}
+          tableName={selectedTable ? selectedTable.name : (selectedTakeout?.waiter_name?.replace('Para Llevar • ', '') || 'Para Llevar')}
+          tableNumber={selectedTable ? selectedTable.table_number : 0}
           isPrecuenta={printingOrder.isPrecuenta}
           onClose={() => setPrintingOrder(null)}
         />
