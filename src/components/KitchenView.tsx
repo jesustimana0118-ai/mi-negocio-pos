@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { ChefHat, Clock, CheckCircle2, RefreshCw, Flame, Check } from 'lucide-react';
+import { ChefHat, Clock, CheckCircle2, RefreshCw, Flame, Check, ShoppingBag } from 'lucide-react';
 
 interface KitchenOrderItem {
   id: string;
@@ -17,10 +17,11 @@ interface KitchenOrder {
   id: string;
   order_number: number;
   created_at: string;
+  waiter_name?: string;
   table: {
     table_number: number;
     name: string;
-  };
+  } | null;
   items: KitchenOrderItem[];
 }
 
@@ -41,6 +42,7 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
         id,
         order_number,
         created_at,
+        waiter_name,
         table:restaurant_tables(table_number, name)
       `)
       .eq('status', 'open')
@@ -68,6 +70,7 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
         id: order.id,
         order_number: order.order_number,
         created_at: order.created_at,
+        waiter_name: order.waiter_name,
         table: order.table,
         items: itemsList.filter((item) => item.order_id === order.id),
       }));
@@ -103,7 +106,6 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
   }, []);
 
   const toggleItemStatus = async (item: KitchenOrderItem) => {
-    // Ciclo: pending (Marchar) -> ready (Listo) -> completed (Completado) -> pending
     let nextStatus: 'pending' | 'ready' | 'completed' = 'pending';
 
     if (item.status === 'pending') {
@@ -114,7 +116,6 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
       nextStatus = 'pending';
     }
 
-    // Actualización inmediata en pantalla (optimistic UI)
     setOrders((prevOrders) =>
       prevOrders.map((order) => {
         if (order.id !== item.order_id) return order;
@@ -127,7 +128,6 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
       })
     );
 
-    // Sincronización con Supabase
     await supabase
       .from('order_items')
       .update({ status: nextStatus })
@@ -157,7 +157,7 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
           <button
             onClick={() => loadKitchenOrders(false)}
             disabled={loading}
-            className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs ${
+            className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs cursor-pointer ${
               isDark
                 ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
                 : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
@@ -192,12 +192,17 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
             const minutesAgo = Math.floor(
               (Date.now() - new Date(order.created_at).getTime()) / 60000
             );
+            const isTakeout = !order.table;
 
             return (
               <div
                 key={order.id}
                 className={`rounded-2xl border p-4 flex flex-col justify-between space-y-3.5 transition-all shadow-xs ${
-                  isDark
+                  isTakeout
+                    ? isDark
+                      ? 'bg-zinc-900/90 border-violet-500/40 shadow-violet-500/5'
+                      : 'bg-white border-violet-300 shadow-violet-500/5'
+                    : isDark
                     ? 'bg-zinc-900/90 border-zinc-800'
                     : 'bg-white border-slate-200 hover:shadow-md'
                 }`}
@@ -205,12 +210,26 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
                 {/* Cabecera de la comanda */}
                 <div className={`flex justify-between items-start border-b pb-3 ${isDark ? 'border-zinc-800' : 'border-slate-100'}`}>
                   <div>
-                    <span className="text-[11px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
-                      Mesa #{order.table?.table_number}
-                    </span>
-                    <h3 className={`text-base font-extrabold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      {order.table?.name}
-                    </h3>
+                    {isTakeout ? (
+                      <div>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-mono font-black text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-500/20 px-2 py-0.5 rounded-md border border-violet-300 dark:border-violet-500/30 uppercase tracking-wide">
+                          <ShoppingBag className="w-3 h-3 text-violet-600 dark:text-violet-400" />
+                          Para Llevar
+                        </span>
+                        <h3 className={`text-base font-extrabold mt-1 truncate max-w-[180px] ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                          {order.waiter_name?.replace('Para Llevar • ', '') || 'Mostrador'}
+                        </h3>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="text-[11px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
+                          Mesa #{order.table?.table_number}
+                        </span>
+                        <h3 className={`text-base font-extrabold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                          {order.table?.name}
+                        </h3>
+                      </div>
+                    )}
                   </div>
 
                   <span className={`inline-flex items-center gap-1 text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${
@@ -223,7 +242,7 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
                   </span>
                 </div>
 
-                {/* Filas de platos con los 3 estados */}
+                {/* Filas de platos */}
                 <div className="space-y-2 flex-1">
                   {order.items.map((item) => {
                     const isPending = !item.status || item.status === 'pending';
@@ -235,7 +254,7 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
                         key={item.id}
                         type="button"
                         onClick={() => toggleItemStatus(item)}
-                        className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all duration-150 active:scale-[0.98] ${
+                        className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all duration-150 active:scale-[0.98] cursor-pointer ${
                           isPending
                             ? isDark
                               ? 'bg-amber-500/[0.08] border-amber-500/40 hover:border-amber-400'
@@ -272,7 +291,6 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
                           </span>
                         </div>
 
-                        {/* Botón de acción con color representativo */}
                         <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-mono font-bold uppercase border shrink-0 transition-transform active:scale-95 ${
                           isPending
                             ? 'bg-amber-500 text-white border-amber-600 hover:bg-amber-600 shadow-xs'
@@ -296,7 +314,7 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
                   isDark ? 'border-zinc-800 text-zinc-500' : 'border-slate-100 text-slate-500'
                 }`}>
                   <span>Comanda #{order.order_number}</span>
-                  <span>Toca un plato para avanzar</span>
+                  <span>{isTakeout ? 'Empaque desechable' : 'Servicio en loza'}</span>
                 </div>
               </div>
             );
