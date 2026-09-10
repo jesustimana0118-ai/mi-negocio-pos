@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Layers, X, Plus, Trash2, CheckCircle2, DollarSign, Scale, Percent } from 'lucide-react';
+import { Layers, X, Plus, Trash2, CheckCircle2, Scale } from 'lucide-react';
 
 interface Ingredient {
   id: string;
@@ -31,14 +31,11 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
   const [recipeItems, setRecipeItems] = useState<RecipeItem[]>([]);
   const [selectedIngredientId, setSelectedIngredientId] = useState<string>('');
   const [quantity, setQuantity] = useState<string>('1');
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function loadData() {
-      setLoading(true);
       try {
-        // Cargar materias primas de bodega
         const { data: ingData } = await supabase
           .from('ingredients')
           .select('*')
@@ -48,7 +45,6 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
           setAvailableIngredients(ingData as Ingredient[]);
         }
 
-        // Cargar receta actual del producto
         const { data: recData } = await supabase
           .from('product_ingredients')
           .select(`
@@ -70,15 +66,12 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
         }
       } catch (err) {
         console.error('Error cargando receta:', err);
-      } finally {
-        setLoading(false);
       }
     }
 
     loadData();
   }, [product.id]);
 
-  // Adaptar cantidad por defecto según unidad del insumo elegido
   const handleSelectIngredient = (ingId: string) => {
     setSelectedIngredientId(ingId);
     const found = availableIngredients.find((i) => i.id === ingId);
@@ -103,7 +96,6 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
     const ing = availableIngredients.find((i) => i.id === selectedIngredientId);
     if (!ing) return;
 
-    // Si ya existía, suma la cantidad
     const existingIndex = recipeItems.findIndex((r) => r.ingredient_id === selectedIngredientId);
     if (existingIndex >= 0) {
       const updated = [...recipeItems];
@@ -124,10 +116,8 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
   const handleSaveRecipe = async () => {
     setSaving(true);
     try {
-      // 1. Limpiar receta anterior
       await supabase.from('product_ingredients').delete().eq('product_id', product.id);
 
-      // 2. Insertar ingredientes nuevos
       if (recipeItems.length > 0) {
         const rows = recipeItems.map((it) => ({
           product_id: product.id,
@@ -147,7 +137,6 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
     }
   };
 
-  // Métricas financieras en tiempo real
   const netPrice = Math.round(Number(product.price) / 1.19);
   const totalRecipeCost = Math.round(
     recipeItems.reduce((acc, it) => {
@@ -163,7 +152,6 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
       <div className="bg-zinc-900 border border-zinc-800 text-zinc-100 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-5">
         
-        {/* Cabecera */}
         <div className="flex items-center justify-between border-b border-zinc-800 pb-3.5">
           <div className="flex items-center gap-2.5">
             <span className="p-2 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20">
@@ -184,7 +172,6 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
           </button>
         </div>
 
-        {/* Tarjetas financieras en vivo */}
         <div className="grid grid-cols-3 gap-2.5 bg-zinc-950 p-3.5 rounded-2xl border border-zinc-800/80 font-mono text-xs">
           <div>
             <span className="text-[10px] text-zinc-400 block">Venta Neta:</span>
@@ -208,7 +195,6 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
           </div>
         </div>
 
-        {/* Formulario para agregar insumos */}
         <div className="space-y-2">
           <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
             <Scale className="w-3.5 h-3.5 text-violet-400" /> Vincular Materia Prima de Bodega:
@@ -227,7 +213,6 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
               ))}
             </select>
 
-            {/* Input con indicador de unidad dinámico */}
             <div className="relative w-32 flex items-center">
               <input
                 type="number"
@@ -253,7 +238,6 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
           </div>
         </div>
 
-        {/* Lista de ingredientes agregados */}
         <div className="space-y-2">
           <span className="text-xs font-bold text-zinc-400">Ingredientes en la Receta ({recipeItems.length}):</span>
           <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 font-mono text-xs">
@@ -301,7 +285,6 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
           </div>
         </div>
 
-        {/* Botón Guardar */}
         <button
           onClick={handleSaveRecipe}
           disabled={saving}
