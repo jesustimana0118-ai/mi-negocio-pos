@@ -7,7 +7,7 @@ import {
   AlertOctagon, CheckCircle2, History,
   Flame, RefreshCw, BarChart3, Users, Utensils, 
   Plus, Edit3, Layers, Tag, Trash2, UserCheck, 
-  Clock, LogOut, Coffee, ShieldCheck
+  Clock, LogOut, Coffee, ShieldCheck, Calculator, ArrowUpRight
 } from 'lucide-react';
 
 interface ShiftAudit {
@@ -38,6 +38,9 @@ interface ProductItem {
   price: number;
   is_active: boolean;
   recipe_count?: number;
+  recipe_cost?: number;
+  food_cost_pct?: number;
+  net_margin?: number;
 }
 
 interface AttendanceLog {
@@ -98,7 +101,7 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
 
       if (shiftsData) setShifts(shiftsData as ShiftAudit[]);
 
-      // 2. Ranking de Productos
+      // 2. Ranking de Ventas
       const { data: itemsData } = await supabase
         .from('order_items')
         .select(`
@@ -122,30 +125,56 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
         setTopProducts(sorted);
       }
 
-      // 3. Platos y Recetas
+      // 3. Insumos para costeo de recetas
+      const { data: ingsData } = await supabase
+        .from('ingredients')
+        .select('id, cost_per_unit');
+
+      const ingredientCosts: Record<string, number> = {};
+      (ingsData || []).forEach((i: { id: string; cost_per_unit: number }) => {
+        ingredientCosts[i.id] = Number(i.cost_per_unit) || 0;
+      });
+
+      // 4. Recetas (cantidades de insumos por plato)
+      const { data: recData } = await supabase
+        .from('product_ingredients')
+        .select('product_id, ingredient_id, quantity');
+
+      const recipeCounts: Record<string, number> = {};
+      const recipeCosts: Record<string, number> = {};
+
+      (recData || []).forEach((r: { product_id: string; ingredient_id: string; quantity: number }) => {
+        recipeCounts[r.product_id] = (recipeCounts[r.product_id] || 0) + 1;
+        const unitCost = ingredientCosts[r.ingredient_id] || 0;
+        recipeCosts[r.product_id] = (recipeCosts[r.product_id] || 0) + (Number(r.quantity) * unitCost);
+      });
+
+      // 5. Catálogo de Platos con Food Cost y Margen calculado
       const { data: prodsData } = await supabase
         .from('products')
         .select('*')
         .order('name', { ascending: true });
 
-      const { data: recData } = await supabase
-        .from('product_ingredients')
-        .select('product_id');
-
       if (prodsData) {
-        const recipeCounts: Record<string, number> = {};
-        (recData || []).forEach((r: { product_id: string }) => {
-          recipeCounts[r.product_id] = (recipeCounts[r.product_id] || 0) + 1;
-        });
+        const mapped: ProductItem[] = prodsData.map((p: any) => {
+          const cost = Math.round(recipeCosts[p.id] || 0);
+          const price = Number(p.price) || 0;
+          const netPrice = price > 0 ? price / 1.19 : 0;
+          const foodCostPct = netPrice > 0 && cost > 0 ? Math.round((cost / netPrice) * 100) : 0;
+          const netMargin = netPrice > 0 ? Math.round(netPrice - cost) : 0;
 
-        const mapped = prodsData.map((p: any) => ({
-          ...p,
-          recipe_count: recipeCounts[p.id] || 0,
-        }));
+          return {
+            ...p,
+            recipe_count: recipeCounts[p.id] || 0,
+            recipe_cost: cost,
+            food_cost_pct: foodCostPct,
+            net_margin: netMargin,
+          };
+        });
         setProductsList(mapped);
       }
 
-      // 4. Marcas de Asistencia
+      // 6. Marcas de Asistencia
       const { data: attData } = await supabase
         .from('staff_attendance')
         .select(`
@@ -160,7 +189,7 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
 
       if (attData) setAttendanceLogs(attData as unknown as AttendanceLog[]);
 
-      // 5. Órdenes de Colación
+      // 7. Órdenes de Colación
       const { data: mealsData } = await supabase
         .from('orders')
         .select(`
@@ -236,6 +265,12 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
     0
   );
 
+  // Promedio Food Cost de platos costeados
+  const costedProducts = productsList.filter((p) => (p.recipe_count || 0) > 0 && (p.recipe_cost || 0) > 0);
+  const avgFoodCost = costedProducts.length > 0
+    ? Math.round(costedProducts.reduce((acc, p) => acc + (p.food_cost_pct || 0), 0) / costedProducts.length)
+    : 0;
+
   return (
     <div className="space-y-6">
       {/* Barra de cabecera */}
@@ -250,7 +285,7 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
             Panel Gerencial & Auditoría Operativa
           </h2>
           <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600 font-medium'}`}>
-            Consolidado tributario SII, asistencia digital DT y costos de personal
+            Consolidado tributario SII, asistencia digital DT y costos de recetas
           </p>
         </div>
 
@@ -526,10 +561,9 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
         </>
       )}
 
-      {/* Pestaña 2: Personal & RRHH (Asistencia DT y Colaciones) */}
+      {/* Pestaña 2: Personal & RRHH */}
       {adminTab === 'staff' && (
         <div className="space-y-6">
-          {/* Tarjetas KPI de Personal */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className={`p-4 rounded-2xl border transition-all ${
               isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
@@ -601,10 +635,7 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
             </div>
           </div>
 
-          {/* Tablas: Asistencia + Colaciones */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Tabla 1: Libro Digital de Asistencia DT */}
             <div className={`rounded-2xl border p-5 shadow-xs space-y-4 ${
               isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
             }`}>
@@ -682,7 +713,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
               </div>
             </div>
 
-            {/* Tabla 2: Auditoría de Colaciones Consumidas */}
             <div className={`rounded-2xl border p-5 shadow-xs space-y-4 ${
               isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
             }`}>
@@ -758,21 +788,76 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
                 </table>
               </div>
             </div>
-
           </div>
         </div>
       )}
 
-      {/* Pestaña 3: Catálogo de Platos & Recetas */}
+      {/* Pestaña 3: Carta, Recetas & Food Cost % */}
       {adminTab === 'menu' && (
-        <div className="space-y-4">
+        <div className="space-y-5">
+          {/* Tarjetas KPI de Ingeniería de Menú */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-xs font-bold text-violet-600 dark:text-violet-400">
+                <span>Promedio Food Cost</span>
+                <Calculator className="w-4 h-4" />
+              </div>
+              <div className="mt-3">
+                <span className={`text-2xl font-black tabular-nums ${
+                  avgFoodCost <= 32 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                }`}>
+                  {avgFoodCost}%
+                </span>
+                <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Meta recomendada: 25% - 32%
+                </p>
+              </div>
+            </div>
+
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                <span>Fichas Técnicas Activas</span>
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+              <div className="mt-3">
+                <span className="text-2xl font-black text-slate-900 dark:text-zinc-100 tabular-nums">
+                  {costedProducts.length} <span className="text-xs font-normal text-zinc-500">/ {productsList.length} platos</span>
+                </span>
+                <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Platos con descuento automático
+                </p>
+              </div>
+            </div>
+
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-xs font-bold text-blue-600 dark:text-blue-400">
+                <span>Margen de Ganancia</span>
+                <ArrowUpRight className="w-4 h-4" />
+              </div>
+              <div className="mt-3">
+                <span className="text-2xl font-black text-blue-600 dark:text-blue-400 tabular-nums">
+                  {avgFoodCost > 0 ? `${100 - avgFoodCost}%` : '—'}
+                </span>
+                <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Margen bruto promedio sobre neto
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between">
             <div>
               <h3 className={`text-sm font-extrabold flex items-center gap-2 ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
-                <Utensils className="w-4 h-4 text-violet-500" /> Catálogo de Platos & Recetas
+                <Utensils className="w-4 h-4 text-violet-500" /> Ingeniería de Menú & Rentabilidad
               </h3>
               <p className={`text-xs mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600 font-medium'}`}>
-                Precios de venta y recetas con deducción automática de inventario
+                Costos reales de producción, margen bruto líquido y Food Cost % por plato
               </p>
             </div>
             <button
@@ -791,78 +876,143 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
                 isDark ? 'bg-zinc-950 border-zinc-800 text-zinc-400' : 'bg-slate-50 border-slate-200 text-slate-700 font-bold'
               }`}>
                 <tr>
-                  <th className="p-3.5">Plato / Producto</th>
-                  <th className="p-3.5">Categoría</th>
+                  <th className="p-3.5">Plato / Categoría</th>
                   <th className="p-3.5 text-right">Precio Venta (IVA Inc.)</th>
-                  <th className="p-3.5 text-center">Receta / Insumos</th>
+                  <th className="p-3.5 text-right">Costo Insumos</th>
+                  <th className="p-3.5 text-center">Food Cost %</th>
+                  <th className="p-3.5 text-right">Margen Neto ($)</th>
                   <th className="p-3.5 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className={`divide-y font-mono ${isDark ? 'divide-zinc-800/80' : 'divide-slate-200/80'}`}>
                 {productsList.length === 0 && !loading ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-xs text-slate-400 dark:text-zinc-500 font-mono">
+                    <td colSpan={6} className="p-8 text-center text-xs text-slate-400 dark:text-zinc-500 font-mono">
                       No hay platos ingresados en la carta.
                     </td>
                   </tr>
                 ) : (
-                  productsList.map((prod) => (
-                    <tr key={prod.id} className={`transition-colors ${isDark ? 'hover:bg-zinc-800/30' : 'hover:bg-slate-50/80'}`}>
-                      <td className={`p-3.5 font-sans font-bold ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
-                        {prod.name}
-                      </td>
-                      <td className="p-3.5">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] border font-sans font-medium ${
-                          isDark ? 'bg-zinc-800 text-zinc-300 border-zinc-700' : 'bg-white text-slate-700 border-slate-300'
-                        }`}>
-                          <Tag className="w-3 h-3 text-violet-500" /> {prod.category}
-                        </span>
-                      </td>
-                      <td className="p-3.5 text-right font-black text-emerald-600 dark:text-emerald-400 tabular-nums text-sm">
-                        ${prod.price.toLocaleString('es-CL')}
-                      </td>
-                      <td className="p-3.5 text-center">
-                        {(prod.recipe_count || 0) > 0 ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                            <CheckCircle2 className="w-3 h-3" /> {prod.recipe_count} insumo(s)
+                  productsList.map((prod) => {
+                    const hasRecipe = (prod.recipe_count || 0) > 0;
+                    const cost = prod.recipe_cost || 0;
+                    const fcPct = prod.food_cost_pct || 0;
+                    const margin = prod.net_margin || 0;
+
+                    // Calificación de Food Cost
+                    const isOptimal = hasRecipe && fcPct > 0 && fcPct <= 32;
+                    const isWarning = hasRecipe && fcPct > 32 && fcPct <= 40;
+
+                    return (
+                      <tr key={prod.id} className={`transition-colors ${isDark ? 'hover:bg-zinc-800/30' : 'hover:bg-slate-50/80'}`}>
+                        {/* Plato */}
+                        <td className="p-3.5 font-sans">
+                          <span className={`font-bold block text-xs ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                            {prod.name}
                           </span>
-                        ) : (
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
-                            isDark ? 'bg-zinc-800 text-zinc-500 border-zinc-700' : 'bg-slate-100 text-slate-500 border-slate-200'
+                          <span className={`inline-flex items-center gap-1 text-[10px] mt-0.5 px-2 py-0.2 rounded border font-mono ${
+                            isDark ? 'bg-zinc-800 text-zinc-400 border-zinc-700' : 'bg-slate-100 text-slate-600 border-slate-200'
                           }`}>
-                            Sin receta
+                            <Tag className="w-2.5 h-2.5 text-violet-500" /> {prod.category}
                           </span>
-                        )}
-                      </td>
-                      <td className="p-3.5 text-right">
-                        <div className="inline-flex items-center gap-1.5">
-                          <button
-                            onClick={() => setRecipeProduct(prod)}
-                            className="px-2.5 py-1.5 bg-violet-600/10 hover:bg-violet-600/20 text-violet-600 dark:text-violet-400 border border-violet-500/30 rounded-lg text-xs font-sans font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-2xs"
-                            title="Gestionar receta"
-                          >
-                            <Layers className="w-3.5 h-3.5" /> Receta
-                          </button>
-                          <button
-                            onClick={() => setEditingProduct(prod)}
-                            className={`p-1.5 rounded-lg border transition-all active:scale-95 cursor-pointer ${
-                              isDark ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                            }`}
-                            title="Editar plato"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteProduct(prod)}
-                            className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 rounded-lg transition-all active:scale-95 cursor-pointer"
-                            title="Eliminar plato"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+
+                        {/* Precio Venta */}
+                        <td className="p-3.5 text-right font-black text-slate-900 dark:text-zinc-100 tabular-nums text-sm">
+                          ${prod.price.toLocaleString('es-CL')}
+                          <span className="block text-[10px] font-normal text-slate-400 font-mono">
+                            Neto: ${Math.round(prod.price / 1.19).toLocaleString('es-CL')}
+                          </span>
+                        </td>
+
+                        {/* Costo Insumos */}
+                        <td className="p-3.5 text-right tabular-nums">
+                          {hasRecipe ? (
+                            <div>
+                              <span className="font-bold text-amber-600 dark:text-amber-400 text-xs">
+                                ${cost.toLocaleString('es-CL')}
+                              </span>
+                              <span className="block text-[10px] text-zinc-400 font-mono">
+                                {prod.recipe_count} ingrediente(s)
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-zinc-500 italic font-sans">
+                              Sin receta
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Food Cost % */}
+                        <td className="p-3.5 text-center">
+                          {hasRecipe && cost > 0 ? (
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black border tabular-nums ${
+                              isOptimal
+                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                                : isWarning
+                                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                                : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                            }`}>
+                              {fcPct}%
+                              <span className="text-[9px] font-medium font-sans">
+                                {isOptimal ? '• Óptimo' : isWarning ? '• Atención' : '• Alto'}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className={`text-[10px] px-2 py-0.5 rounded border ${
+                              isDark ? 'bg-zinc-800 text-zinc-500 border-zinc-700' : 'bg-slate-100 text-slate-400 border-slate-200'
+                            }`}>
+                              —
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Margen Neto Líquido */}
+                        <td className="p-3.5 text-right tabular-nums">
+                          {hasRecipe && cost > 0 ? (
+                            <div>
+                              <span className="font-black text-emerald-600 dark:text-emerald-400 text-xs">
+                                +${margin.toLocaleString('es-CL')}
+                              </span>
+                              <span className="block text-[10px] text-zinc-400 font-mono">
+                                Margen: {100 - fcPct}%
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-zinc-500">—</span>
+                          )}
+                        </td>
+
+                        {/* Acciones */}
+                        <td className="p-3.5 text-right">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              onClick={() => setRecipeProduct(prod)}
+                              className="px-2.5 py-1.5 bg-violet-600/10 hover:bg-violet-600/20 text-violet-600 dark:text-violet-400 border border-violet-500/30 rounded-lg text-xs font-sans font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-2xs"
+                              title="Gestionar receta e insumos"
+                            >
+                              <Layers className="w-3.5 h-3.5" /> Ficha
+                            </button>
+                            <button
+                              onClick={() => setEditingProduct(prod)}
+                              className={`p-1.5 rounded-lg border transition-all active:scale-95 cursor-pointer ${
+                                isDark ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                              }`}
+                              title="Editar plato"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteProduct(prod)}
+                              className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 rounded-lg transition-all active:scale-95 cursor-pointer"
+                              title="Eliminar plato"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
