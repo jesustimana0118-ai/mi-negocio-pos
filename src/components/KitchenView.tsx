@@ -66,16 +66,19 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
 
       const itemsList = (itemsData || []) as unknown as KitchenOrderItem[];
 
-      const grouped = ordersData.map((order: any) => ({
-        id: order.id,
-        order_number: order.order_number,
-        created_at: order.created_at,
-        waiter_name: order.waiter_name,
-        table: order.table,
-        items: itemsList.filter((item) => item.order_id === order.id),
-      }));
+const grouped = ordersData
+  .map((order: any) => ({
+    id: order.id,
+    order_number: order.order_number,
+    created_at: order.created_at,
+    waiter_name: order.waiter_name,
+    table: order.table,
+    items: itemsList.filter((item) => item.order_id === order.id),
+  }))
+  // Ocultar comandas donde TODOS los platos ya fueron completados
+  .filter((order) => order.items.some((it) => it.status !== 'completed'));
 
-      setOrders(grouped);
+setOrders(grouped);
     } else {
       setOrders([]);
     }
