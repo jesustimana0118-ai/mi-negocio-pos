@@ -8,12 +8,13 @@ import { KitchenView } from './components/KitchenView';
 import { InventoryView } from './components/InventoryView';
 import { AdminDashboardView } from './components/AdminDashboardView';
 import { ReceiptModal } from './components/ReceiptModal';
-import { PinModal, type StaffMember } from './components/PinModal';
+import { StaffPortalModal, type StaffMember } from './components/StaffPortalModal';
 import type { RestaurantTable } from './types/database';
 import { 
   UtensilsCrossed, Store, PlusCircle, 
   CreditCard, Lock, ChefHat, LayoutGrid, Boxes, TrendingUp, Printer,
-User, Sun, Moon, ShieldCheck, Delete} from 'lucide-react';
+  User, Sun, Moon, ShieldCheck, Delete
+} from 'lucide-react';
 
 interface ActiveOrderSummary {
   id: string;
@@ -53,7 +54,7 @@ export default function App() {
     role: 'waiter',
     pin_code: '1234',
   });
-  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [isStaffPortalOpen, setIsStaffPortalOpen] = useState(false);
 
   const isDark = theme === 'dark';
 
@@ -72,7 +73,6 @@ export default function App() {
     loadDefaultStaff();
   }, []);
 
-  // Cargar orden activa de mesa seleccionada
   useEffect(() => {
     async function loadTableOrder() {
       if (!selectedTable || selectedTable.status !== 'occupied') {
@@ -344,13 +344,15 @@ export default function App() {
 
             <div className={`w-px h-6 ${isDark ? 'bg-zinc-800' : 'bg-slate-200'}`} />
 
+            {/* Acceso al Portal de Personal (Asistencia y Colación) */}
             <button
-              onClick={() => setIsPinModalOpen(true)}
+              onClick={() => setIsStaffPortalOpen(true)}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all active:scale-95 cursor-pointer ${
                 isDark
                   ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border-zinc-700'
                   : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200 shadow-xs'
               }`}
+              title="Portal de Personal • Marcar asistencia o colación"
             >
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
               <User className="w-3.5 h-3.5 text-slate-500" />
@@ -358,7 +360,7 @@ export default function App() {
               <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
                 isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-slate-100 border-slate-300 text-slate-700 font-semibold'
               }`}>
-                PIN
+                PORTAL
               </span>
             </button>
 
@@ -484,7 +486,6 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* Acciones de Cobro */}
                   {activeOrder ? (
                     <div className="space-y-2 pt-1">
                       <button
@@ -544,7 +545,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Demás Vistas */}
         {currentView === 'kitchen' && (
           <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
             <KitchenView isDark={isDark} />
@@ -564,18 +564,19 @@ export default function App() {
         )}
       </div>
 
-      {/* Modales */}
-      {isPinModalOpen && (
-        <PinModal
-          onSuccess={(staff) => {
+      {/* Modal Portal de Personal (Asistencia y Colaciones) */}
+      {isStaffPortalOpen && (
+        <StaffPortalModal
+          currentStaff={activeStaff}
+          onSelectStaff={(staff) => {
             setActiveStaff(staff);
-            setIsPinModalOpen(false);
+            setIsStaffPortalOpen(false);
           }}
-          onClose={() => setIsPinModalOpen(false)}
+          onClose={() => setIsStaffPortalOpen(false)}
+          isDark={isDark}
         />
       )}
 
-      {/* Modal para pedidos en mesa */}
       {isOrdering && selectedTable && (
         <POSOrderModal
           table={selectedTable}
@@ -586,7 +587,6 @@ export default function App() {
         />
       )}
 
-      {/* Modal para pedidos para llevar */}
       {isTakeoutOrdering && (
         <POSOrderModal
           table={null}
