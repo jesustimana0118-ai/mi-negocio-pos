@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Product, RestaurantTable } from '../types/database';
-import { X, Plus, Minus, Send, Coffee } from 'lucide-react';
+import { X, Plus, Minus, Send, Coffee, ShoppingBag, User } from 'lucide-react';
 
 interface CartItem {
   product: Product;
@@ -9,7 +9,8 @@ interface CartItem {
 }
 
 interface POSOrderModalProps {
-  table: RestaurantTable;
+  table?: RestaurantTable | null;
+  isTakeout?: boolean;
   waiterName?: string;
   onClose: () => void;
   onOrderSuccess: () => void;
@@ -17,6 +18,7 @@ interface POSOrderModalProps {
 
 export function POSOrderModal({
   table,
+  isTakeout = false,
   waiterName = 'Garzón',
   onClose,
   onOrderSuccess,
@@ -26,6 +28,9 @@ export function POSOrderModal({
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('Todos');
+  const [customerName, setCustomerName] = useState<string>('');
+
+  const isTakeoutOrder = isTakeout || !table;
 
   useEffect(() => {
     async function loadProducts() {
@@ -77,12 +82,12 @@ export function POSOrderModal({
   const subtotal_net = Math.round(totalWithIva / 1.19);
   const iva_amount = totalWithIva - subtotal_net;
 
-const handleConfirmOrder = async () => {
+  const handleConfirmOrder = async () => {
     if (cart.length === 0 || submitting) return;
     setSubmitting(true);
 
     try {
-      // 1. Obtener turno de caja abierto si existe
+      // 1. Obtener turno de caja abierto
       const { data: openShift } = await supabase
         .from('cash_shifts')
         .select('id')
@@ -91,11 +96,12 @@ const handleConfirmOrder = async () => {
         .limit(1)
         .maybeSingle();
 
-      // 2. Crear Orden sin campos conflictivos
+      // 2. Crear Orden
+      const finalCustomer = customerName.trim() || 'Cliente Mostrador';
       const orderPayload: Record<string, any> = {
-        table_id: table.id,
+        table_id: table ? table.id : null,
         shift_id: openShift?.id || null,
-        waiter_name: waiterName,
+        waiter_name: isTakeoutOrder ? `Para Llevar • ${finalCustomer}` : waiterName,
         subtotal_net,
         iva_amount,
         tip_amount: 0,
@@ -124,11 +130,13 @@ const handleConfirmOrder = async () => {
       const { error: itemsError } = await supabase.from('order_items').insert(itemsToInsert);
       if (itemsError) throw itemsError;
 
-      // 4. Cambiar estado de la mesa a ocupada
-      await supabase
-        .from('restaurant_tables')
-        .update({ status: 'occupied' })
-        .eq('id', table.id);
+      // 4. Cambiar estado de la mesa solo si es consumo en salón
+      if (table) {
+        await supabase
+          .from('restaurant_tables')
+          .update({ status: 'occupied' })
+          .eq('id', table.id);
+      }
 
       onOrderSuccess();
     } catch (err: any) {
@@ -139,7 +147,7 @@ const handleConfirmOrder = async () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-3">
       <div className="bg-zinc-900 border border-zinc-800 w-full max-w-4xl h-[90vh] rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden">
         
         {/* Catálogo de Productos */}
@@ -147,27 +155,59 @@ const handleConfirmOrder = async () => {
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-3">
             <div>
               <h2 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
-                <Coffee className="w-4 h-4 text-emerald-400" />
-                Tomar Pedido — {table.name}
+                {isTakeoutOrder ? (
+                  <>
+                    <span className="p-1 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                      <ShoppingBag className="w-4 h-4" />
+                    </span>
+                    Nuevo Pedido • Para Llevar
+                  </>
+                ) : (
+                  <>
+                    <span className="p-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <Coffee className="w-4 h-4" />
+                    </span>
+                    Tomar Pedido — {table?.name}
+                  </>
+                )}
               </h2>
-              <p className="text-[11px] text-zinc-400 font-mono">
+              <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
                 Atendido por: <strong className="text-amber-400">{waiterName}</strong>
               </p>
             </div>
-            <button onClick={onClose} className="p-1.5 text-zinc-400 hover:text-zinc-100 bg-zinc-800 rounded-lg">
+            <button 
+              onClick={onClose} 
+              className="p-1.5 text-zinc-400 hover:text-zinc-100 bg-zinc-800 rounded-lg transition cursor-pointer"
+            >
               <X className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Campo para Pedidos Para Llevar */}
+          {isTakeoutOrder && (
+            <div className="mb-3 p-2.5 bg-violet-950/30 border border-violet-500/30 rounded-xl flex items-center gap-2">
+              <User className="w-4 h-4 text-violet-400 shrink-0" />
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Nombre del cliente o ticket de retiro (Ej: Juan Pérez)"
+                className="w-full bg-zinc-900/90 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-hidden focus:border-violet-500"
+                autoFocus
+              />
+            </div>
+          )}
 
           {/* Categorías */}
           <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3">
             {categories.map((cat) => (
               <button
                 key={cat}
+                type="button"
                 onClick={() => setActiveCategory(cat)}
-                className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+                className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   activeCategory === cat
-                    ? 'bg-emerald-500 text-zinc-950 shadow'
+                    ? 'bg-emerald-500 text-zinc-950 shadow-xs font-bold'
                     : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
                 }`}
               >
@@ -186,15 +226,16 @@ const handleConfirmOrder = async () => {
               filteredProducts.map((p) => (
                 <button
                   key={p.id}
+                  type="button"
                   onClick={() => addToCart(p)}
-                  className="p-3 bg-zinc-950/60 hover:bg-zinc-800/80 border border-zinc-800 rounded-xl text-left flex flex-col justify-between transition active:scale-95 group"
+                  className="p-3 bg-zinc-950/60 hover:bg-zinc-800/80 border border-zinc-800 rounded-xl text-left flex flex-col justify-between transition-all active:scale-95 group cursor-pointer"
                 >
                   <span className="text-xs font-semibold text-zinc-200 line-clamp-2">{p.name}</span>
                   <div className="mt-3 flex justify-between items-center w-full">
                     <span className="text-xs font-bold font-mono text-emerald-400 tabular-nums">
                       ${p.price.toLocaleString('es-CL')}
                     </span>
-                    <span className="p-1 rounded-lg bg-zinc-800 group-hover:bg-emerald-500 group-hover:text-zinc-950 transition">
+                    <span className="p-1 rounded-lg bg-zinc-800 group-hover:bg-emerald-500 group-hover:text-zinc-950 transition-colors">
                       <Plus className="w-3.5 h-3.5" />
                     </span>
                   </div>
@@ -232,8 +273,9 @@ const handleConfirmOrder = async () => {
 
                     <div className="flex items-center gap-1.5">
                       <button
+                        type="button"
                         onClick={() => removeFromCart(product.id)}
-                        className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition"
+                        className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
                       >
                         <Minus className="w-3 h-3" />
                       </button>
@@ -241,8 +283,9 @@ const handleConfirmOrder = async () => {
                         {quantity}
                       </span>
                       <button
+                        type="button"
                         onClick={() => addToCart(product)}
-                        className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition"
+                        className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
                       >
                         <Plus className="w-3 h-3" />
                       </button>
@@ -270,12 +313,17 @@ const handleConfirmOrder = async () => {
             </div>
 
             <button
+              type="button"
               onClick={handleConfirmOrder}
               disabled={cart.length === 0 || submitting}
-              className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition active:scale-95 shadow-lg"
+              className={`w-full py-3 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg cursor-pointer ${
+                isTakeoutOrder
+                  ? 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-600/20'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-emerald-500/20'
+              }`}
             >
               <Send className="w-4 h-4" />
-              {submitting ? 'Marchando...' : 'Enviar a Cocina'}
+              {submitting ? 'Marchando...' : isTakeoutOrder ? 'Marchar Para Llevar' : 'Enviar a Cocina'}
             </button>
           </div>
         </div>
