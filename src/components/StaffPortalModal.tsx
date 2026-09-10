@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import type { Product } from '../types/database';
 import { 
   X, UserCheck, Clock, Utensils, LogOut, 
-  CheckCircle2, ArrowRight, Delete 
+  CheckCircle2, ArrowRight, Delete, Plus, Minus, ShoppingBag 
 } from 'lucide-react';
 
 export interface StaffMember {
@@ -20,6 +20,11 @@ interface StaffPortalModalProps {
   isDark?: boolean;
 }
 
+interface MealItem {
+  product: Product;
+  quantity: number;
+}
+
 export function StaffPortalModal({ 
   currentStaff, 
   onSelectStaff, 
@@ -33,9 +38,9 @@ export function StaffPortalModal({
   // Vistas internas: pin -> menu -> meal_selector
   const [step, setStep] = useState<'pin' | 'actions' | 'meal'>('pin');
   
-  // Registro de colación
+  // Canasta de colación (permite múltiples ítems: plato + bebida)
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [mealCart, setMealCart] = useState<MealItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -110,8 +115,35 @@ export function StaffPortalModal({
     }
   };
 
+  const addToMealCart = (product: Product) => {
+    setMealCart((prev) => {
+      const existing = prev.find((it) => it.product.id === product.id);
+      if (existing) {
+        return prev.map((it) =>
+          it.product.id === product.id ? { ...it, quantity: it.quantity + 1 } : it
+        );
+      }
+      return [...prev, { product, quantity: 1 }];
+    });
+  };
+
+  const removeFromMealCart = (productId: string) => {
+    setMealCart((prev) =>
+      prev
+        .map((it) =>
+          it.product.id === productId ? { ...it, quantity: it.quantity - 1 } : it
+        )
+        .filter((it) => it.quantity > 0)
+    );
+  };
+
+  const realTotalCost = mealCart.reduce(
+    (acc, it) => acc + it.product.price * it.quantity,
+    0
+  );
+
   const handleConfirmStaffMeal = async () => {
-    if (!authenticatedStaff || !selectedProduct) return;
+    if (!authenticatedStaff || mealCart.length === 0 || submitting) return;
     setSubmitting(true);
 
     try {
@@ -124,7 +156,7 @@ export function StaffPortalModal({
         .limit(1)
         .maybeSingle();
 
-      // 2. Crear orden a costo $0 para descontar inventario sin alterar caja
+      // 2. Crear orden a costo $0 para descontar insumos sin alterar caja
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -136,7 +168,7 @@ export function StaffPortalModal({
           iva_amount: 0,
           tip_amount: 0,
           total_amount: 0,
-          status: 'paid', // Queda saldada de inmediato
+          status: 'paid',
           paid_at: new Date().toISOString(),
         })
         .select()
@@ -144,19 +176,20 @@ export function StaffPortalModal({
 
       if (orderError) throw orderError;
 
-      // 3. Registrar ítem en cocina/receta
-      const { error: itemError } = await supabase.from('order_items').insert({
+      // 3. Registrar ítems en batch para cocina y recetas de insumos
+      const itemsPayload = mealCart.map((it) => ({
         order_id: orderData.id,
-        product_id: selectedProduct.id,
-        quantity: 1,
+        product_id: it.product.id,
+        quantity: it.quantity,
         unit_price: 0,
         subtotal: 0,
         status: 'pending',
-      });
+      }));
 
-      if (itemError) throw itemError;
+      const { error: itemsError } = await supabase.from('order_items').insert(itemsPayload);
+      if (itemsError) throw itemsError;
 
-      setSuccessMessage(`Colación de ${selectedProduct.name} enviada a cocina`);
+      setSuccessMessage(`Colación de ${mealCart.length} ítem(s) enviada a cocina`);
       setTimeout(() => {
         onSelectStaff(authenticatedStaff);
         onClose();
@@ -170,11 +203,11 @@ export function StaffPortalModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3">
-      <div className={`w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-5 border transition-all ${
+      <div className={`w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4 border transition-all ${
         isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
       }`}>
         {/* Encabezado */}
-        <div className={`flex items-center justify-between border-b pb-3 ${
+        <div className={`flex items-center justify-between border-b pb-2.5 ${
           isDark ? 'border-zinc-800' : 'border-slate-100'
         }`}>
           <div className="flex items-center gap-2">
@@ -200,7 +233,7 @@ export function StaffPortalModal({
 
         {/* Paso 1: Ingreso de PIN Personal */}
         {step === 'pin' && (
-          <div className="flex flex-col items-center space-y-4">
+          <div className="flex flex-col items-center space-y-4 py-1">
             <div className="text-center space-y-0.5">
               <p className={`text-xs font-mono ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
                 Digita tu PIN de 4 dígitos para identificarte
@@ -268,9 +301,9 @@ export function StaffPortalModal({
           </div>
         )}
 
-        {/* Paso 2: Menú de Acciones del Empleado */}
+        {/* Paso 2: Menú de Acciones */}
         {step === 'actions' && authenticatedStaff && (
-          <div className="space-y-4">
+          <div className="space-y-3.5">
             <div className={`p-3 rounded-2xl border text-center ${
               isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-50 border-slate-200'
             }`}>
@@ -326,7 +359,7 @@ export function StaffPortalModal({
                     onSelectStaff(authenticatedStaff);
                     onClose();
                   }}
-                  className={`w-full py-2.5 rounded-xl border font-sans font-bold transition-all ${
+                  className={`w-full py-2.5 rounded-xl border font-sans font-bold transition-all cursor-pointer ${
                     isDark ? 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-200' : 'bg-slate-100 border-slate-200 hover:bg-slate-200 text-slate-700'
                   }`}
                 >
@@ -337,11 +370,11 @@ export function StaffPortalModal({
           </div>
         )}
 
-        {/* Paso 3: Selección de Plato de Colación */}
+        {/* Paso 3: Selección Múltiple de Colación (Platos + Bebidas) */}
         {step === 'meal' && authenticatedStaff && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold font-sans">Elige tu plato o bebida:</span>
+              <span className="text-xs font-bold font-sans">Elige tus productos de colación:</span>
               <button
                 onClick={() => setStep('actions')}
                 className="text-[11px] font-mono text-blue-500 hover:underline cursor-pointer"
@@ -350,45 +383,85 @@ export function StaffPortalModal({
               </button>
             </div>
 
-            <div className={`rounded-xl border p-2 max-h-52 overflow-y-auto space-y-1.5 ${
+            {/* Lista de productos para agregar */}
+            <div className={`rounded-xl border p-2 max-h-48 overflow-y-auto space-y-1.5 ${
               isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-50 border-slate-200'
             }`}>
               {products.map((p) => {
-                const isSelected = selectedProduct?.id === p.id;
+                const inCart = mealCart.find((it) => it.product.id === p.id);
                 return (
-                  <button
+                  <div
                     key={p.id}
-                    onClick={() => setSelectedProduct(p)}
-                    className={`w-full p-2 rounded-lg text-left text-xs flex items-center justify-between border transition-all cursor-pointer ${
-                      isSelected
+                    className={`w-full p-2 rounded-lg text-xs flex items-center justify-between border transition-all ${
+                      inCart
                         ? 'bg-amber-500/10 border-amber-500 text-amber-500 font-bold'
                         : isDark ? 'border-zinc-800/80 hover:bg-zinc-900 text-zinc-300' : 'border-slate-200 hover:bg-white text-slate-700'
                     }`}
                   >
-                    <span className="truncate pr-2">{p.name}</span>
-                    <span className="font-mono text-[10px] text-zinc-500 line-through">
-                      ${p.price.toLocaleString('es-CL')}
-                    </span>
-                  </button>
+                    <div className="truncate pr-2 min-w-0">
+                      <p className="truncate">{p.name}</p>
+                      <span className="font-mono text-[10px] text-zinc-500 line-through">
+                        ${p.price.toLocaleString('es-CL')}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {inCart ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => removeFromMealCart(p.id)}
+                            className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition cursor-pointer"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="font-mono text-xs font-bold w-4 text-center">
+                            {inCart.quantity}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => addToMealCart(p)}
+                            className="p-1 rounded bg-amber-500 hover:bg-amber-400 text-zinc-950 transition cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3 stroke-[3]" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => addToMealCart(p)}
+                          className="px-2 py-1 bg-zinc-800 hover:bg-amber-500 hover:text-zinc-950 rounded-md text-[10px] font-mono font-bold transition cursor-pointer"
+                        >
+                          + Agregar
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 );
               })}
             </div>
 
-            {selectedProduct && (
-              <div className={`p-2.5 rounded-xl border text-xs font-mono flex justify-between items-center ${
-                isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-100 border-slate-200'
-              }`}>
-                <span>Total a cobrar al empleado:</span>
-                <span className="font-bold text-emerald-500 text-sm">$0 (Beneficio)</span>
+            {/* Resumen de la colación */}
+            <div className={`p-2.5 rounded-xl border text-xs font-mono space-y-1 ${
+              isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-100 border-slate-200'
+            }`}>
+              <div className="flex justify-between text-zinc-500 text-[11px]">
+                <span>Valor comercial real:</span>
+                <span className="line-through">${realTotalCost.toLocaleString('es-CL')}</span>
               </div>
-            )}
+              <div className="flex justify-between items-center pt-1 border-t border-dashed border-zinc-800">
+                <span className="font-bold">Total a cobrar:</span>
+                <span className="font-black text-emerald-500 text-sm">$0 (Beneficio)</span>
+              </div>
+            </div>
 
             <button
               onClick={handleConfirmStaffMeal}
-              disabled={!selectedProduct || submitting}
+              disabled={mealCart.length === 0 || submitting}
               className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-amber-500/20 cursor-pointer"
             >
-              {submitting ? 'Enviando comanda...' : 'Confirmar y Enviar a Cocina'}
+              <ShoppingBag className="w-4 h-4" />
+              {submitting ? 'Enviando...' : `Confirmar Colación (${mealCart.reduce((a, b) => a + b.quantity, 0)} ítems)`}
             </button>
           </div>
         )}
