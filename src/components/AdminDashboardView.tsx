@@ -6,7 +6,8 @@ import {
   TrendingUp, DollarSign, Receipt, Percent, 
   AlertOctagon, CheckCircle2, History,
   Flame, RefreshCw, BarChart3, Users, Utensils, 
-  Plus, Edit3, Layers, Tag, Trash2
+  Plus, Edit3, Layers, Tag, Trash2, UserCheck, 
+  Clock, LogOut, Coffee, ShieldCheck
 } from 'lucide-react';
 
 interface ShiftAudit {
@@ -39,15 +40,47 @@ interface ProductItem {
   recipe_count?: number;
 }
 
+interface AttendanceLog {
+  id: string;
+  event_type: 'clock_in' | 'clock_out' | 'break_start' | 'break_end';
+  timestamp: string;
+  notes?: string;
+  staff?: {
+    name: string;
+    role: string;
+  };
+}
+
+interface StaffMealOrder {
+  id: string;
+  order_number: number;
+  created_at: string;
+  waiter_name: string;
+  staff?: {
+    name: string;
+    role: string;
+  };
+  order_items: {
+    id: string;
+    quantity: number;
+    product?: {
+      name: string;
+      price: number;
+    };
+  }[];
+}
+
 interface AdminDashboardViewProps {
   isDark?: boolean;
 }
 
 export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
-  const [adminTab, setAdminTab] = useState<'metrics' | 'menu'>('metrics');
+  const [adminTab, setAdminTab] = useState<'metrics' | 'menu' | 'staff'>('metrics');
   const [shifts, setShifts] = useState<ShiftAudit[]>([]);
   const [topProducts, setTopProducts] = useState<ProductSaleMetric[]>([]);
   const [productsList, setProductsList] = useState<ProductItem[]>([]);
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
+  const [staffMeals, setStaffMeals] = useState<StaffMealOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [recipeProduct, setRecipeProduct] = useState<ProductItem | null>(null);
@@ -57,6 +90,7 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
   async function loadDashboardData() {
     setLoading(true);
     try {
+      // 1. Turnos de Caja
       const { data: shiftsData } = await supabase
         .from('cash_shifts')
         .select('*')
@@ -64,6 +98,7 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
 
       if (shiftsData) setShifts(shiftsData as ShiftAudit[]);
 
+      // 2. Ranking de Productos
       const { data: itemsData } = await supabase
         .from('order_items')
         .select(`
@@ -87,6 +122,7 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
         setTopProducts(sorted);
       }
 
+      // 3. Platos y Recetas
       const { data: prodsData } = await supabase
         .from('products')
         .select('*')
@@ -108,6 +144,43 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
         }));
         setProductsList(mapped);
       }
+
+      // 4. Marcas de Asistencia
+      const { data: attData } = await supabase
+        .from('staff_attendance')
+        .select(`
+          id,
+          event_type,
+          timestamp,
+          notes,
+          staff:staff(name, role)
+        `)
+        .order('timestamp', { ascending: false })
+        .limit(30);
+
+      if (attData) setAttendanceLogs(attData as unknown as AttendanceLog[]);
+
+      // 5. Órdenes de Colación
+      const { data: mealsData } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          order_number,
+          created_at,
+          waiter_name,
+          staff:staff(name, role),
+          order_items(
+            id,
+            quantity,
+            product:products(name, price)
+          )
+        `)
+        .eq('is_staff_meal', true)
+        .order('created_at', { ascending: false })
+        .limit(30);
+
+      if (mealsData) setStaffMeals(mealsData as unknown as StaffMealOrder[]);
+
     } catch (err) {
       console.error('Error cargando métricas:', err);
     } finally {
@@ -124,21 +197,12 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
     if (!confirmed) return;
 
     try {
-      // 1. Primero borramos los ingredientes asociados a la receta si existen
-      await supabase
-        .from('product_ingredients')
-        .delete()
-        .eq('product_id', prod.id);
-
-      // 2. Eliminamos el producto
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', prod.id);
+      await supabase.from('product_ingredients').delete().eq('product_id', prod.id);
+      const { error } = await supabase.from('products').delete().eq('id', prod.id);
 
       if (error) {
         if (error.code === '23503') {
-          alert(`No se puede eliminar "${prod.name}" porque ya tiene ventas u órdenes registradas en el historial. Puedes desactivarlo editándolo.`);
+          alert(`No se puede eliminar "${prod.name}" porque tiene órdenes asociadas. Puedes desactivarlo.`);
         } else {
           throw error;
         }
@@ -147,15 +211,30 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
 
       setProductsList((prev) => prev.filter((p) => p.id !== prod.id));
     } catch (err: any) {
-      alert('Error al eliminar plato: ' + (err?.message || 'Error de base de datos'));
+      alert('Error al eliminar: ' + (err?.message || 'Error de base de datos'));
     }
   };
 
+  // Cálculos fiscales
   const totalGrossSales = shifts.reduce((acc, s) => acc + (Number(s.total_sales) || 0), 0);
   const totalNetSales = shifts.reduce((acc, s) => acc + (Number(s.total_net) || 0), 0);
   const totalIvaDebit = shifts.reduce((acc, s) => acc + (Number(s.total_iva) || 0), 0);
   const totalPpmProvision = Math.round(totalNetSales * 0.01);
   const totalTipsPool = shifts.reduce((acc, s) => acc + (Number(s.total_tips) || 0), 0);
+
+  // Cálculos de colaciones
+  const totalStaffMealCost = staffMeals.reduce((acc, meal) => {
+    const mealVal = meal.order_items.reduce(
+      (sub, it) => sub + (it.product?.price || 0) * it.quantity,
+      0
+    );
+    return acc + mealVal;
+  }, 0);
+
+  const totalMealPortions = staffMeals.reduce(
+    (acc, meal) => acc + meal.order_items.reduce((sub, it) => sub + it.quantity, 0),
+    0
+  );
 
   return (
     <div className="space-y-6">
@@ -168,10 +247,10 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
             <span className="p-1.5 rounded-lg bg-violet-500/10 text-violet-600 border border-violet-500/20">
               <TrendingUp className="w-4 h-4" />
             </span>
-            Panel Gerencial & Finanzas
+            Panel Gerencial & Auditoría Operativa
           </h2>
           <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600 font-medium'}`}>
-            Consolidado impositivo SII, arqueos antifraude y control de costos de recetas
+            Consolidado tributario SII, asistencia digital DT y costos de personal
           </p>
         </div>
 
@@ -186,6 +265,16 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
               }`}
             >
               Métricas & Finanzas
+            </button>
+            <button
+              onClick={() => setAdminTab('staff')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                adminTab === 'staff'
+                  ? 'bg-violet-600 text-white shadow-xs'
+                  : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Personal & RRHH
             </button>
             <button
               onClick={() => setAdminTab('menu')}
@@ -214,11 +303,10 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
         </div>
       </div>
 
-      {adminTab === 'metrics' ? (
+      {/* Pestaña 1: Finanzas e Impuestos */}
+      {adminTab === 'metrics' && (
         <>
-          {/* Tarjetas KPI */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Ventas Brutas */}
             <div className={`p-4 rounded-2xl border transition-all ${
               isDark 
                 ? 'bg-gradient-to-br from-emerald-950/40 via-zinc-900 to-zinc-900 border-emerald-500/30' 
@@ -240,7 +328,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
               </div>
             </div>
 
-            {/* IVA Débito Fiscal */}
             <div className={`p-4 rounded-2xl border transition-all ${
               isDark 
                 ? 'bg-gradient-to-br from-teal-950/40 via-zinc-900 to-zinc-900 border-teal-500/30' 
@@ -262,7 +349,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
               </div>
             </div>
 
-            {/* Provisión PPM */}
             <div className={`p-4 rounded-2xl border transition-all ${
               isDark 
                 ? 'bg-gradient-to-br from-amber-950/40 via-zinc-900 to-zinc-900 border-amber-500/30' 
@@ -284,7 +370,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
               </div>
             </div>
 
-            {/* Pozo Propinas */}
             <div className={`p-4 rounded-2xl border transition-all ${
               isDark 
                 ? 'bg-gradient-to-br from-blue-950/40 via-zinc-900 to-zinc-900 border-blue-500/30' 
@@ -307,9 +392,7 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
             </div>
           </div>
 
-          {/* Tablas de Auditoría y Ranking */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Tabla de Arqueos */}
             <div className={`lg:col-span-2 rounded-2xl border p-5 shadow-xs space-y-4 ${
               isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
             }`}>
@@ -390,7 +473,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
               </div>
             </div>
 
-            {/* Ranking Top Productos */}
             <div className={`rounded-2xl border p-5 shadow-xs space-y-4 ${
               isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
             }`}>
@@ -442,8 +524,247 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
             </div>
           </div>
         </>
-      ) : (
-        /* Catálogo de Platos & Recetas */
+      )}
+
+      {/* Pestaña 2: Personal & RRHH (Asistencia DT y Colaciones) */}
+      {adminTab === 'staff' && (
+        <div className="space-y-6">
+          {/* Tarjetas KPI de Personal */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-xs font-bold text-blue-600 dark:text-blue-400">
+                <span>Marcas Registradas</span>
+                <Clock className="w-4 h-4" />
+              </div>
+              <div className="mt-3">
+                <span className="text-2xl font-black tabular-nums text-slate-900 dark:text-zinc-100">
+                  {attendanceLogs.length}
+                </span>
+                <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Control de jornada DT
+                </p>
+              </div>
+            </div>
+
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-xs font-bold text-amber-600 dark:text-amber-400">
+                <span>Inversión en Colaciones</span>
+                <Utensils className="w-4 h-4" />
+              </div>
+              <div className="mt-3">
+                <span className="text-2xl font-black tabular-nums text-amber-600 dark:text-amber-400">
+                  ${totalStaffMealCost.toLocaleString('es-CL')}
+                </span>
+                <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Beneficio alimentario ($0)
+                </p>
+              </div>
+            </div>
+
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                <span>Raciones Entregadas</span>
+                <Coffee className="w-4 h-4" />
+              </div>
+              <div className="mt-3">
+                <span className="text-2xl font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                  {totalMealPortions} un.
+                </span>
+                <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Platos y bebestibles
+                </p>
+              </div>
+            </div>
+
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-xs font-bold text-violet-600 dark:text-violet-400">
+                <span>Cumplimiento Legal</span>
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <div className="mt-3">
+                <span className="text-lg font-black text-slate-900 dark:text-zinc-100 flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                  Auditado
+                </span>
+                <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Hora de servidor inmutable
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Tablas: Asistencia + Colaciones */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* Tabla 1: Libro Digital de Asistencia DT */}
+            <div className={`rounded-2xl border p-5 shadow-xs space-y-4 ${
+              isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-blue-500" />
+                  <h3 className={`font-extrabold text-sm ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                    Libro Digital de Asistencia
+                  </h3>
+                </div>
+                <span className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Últimas marcas
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className={`border-b ${
+                    isDark ? 'bg-zinc-950 text-zinc-400 border-zinc-800' : 'bg-slate-50 text-slate-700 border-slate-200 font-bold'
+                  }`}>
+                    <tr>
+                      <th className="p-3">Colaborador</th>
+                      <th className="p-3">Evento</th>
+                      <th className="p-3 text-right">Fecha & Hora</th>
+                    </tr>
+                  </thead>
+                  <tbody className={`divide-y ${isDark ? 'divide-zinc-800' : 'divide-slate-200'}`}>
+                    {attendanceLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="p-6 text-center text-slate-400 dark:text-zinc-500">
+                          Sin marcas de asistencia registradas.
+                        </td>
+                      </tr>
+                    ) : (
+                      attendanceLogs.map((log) => {
+                        const isEntry = log.event_type === 'clock_in';
+                        const isExit = log.event_type === 'clock_out';
+
+                        return (
+                          <tr key={log.id} className={isDark ? 'hover:bg-zinc-800/40' : 'hover:bg-slate-50/80'}>
+                            <td className="p-3">
+                              <span className={`font-bold block font-sans ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                                {log.staff?.name || 'Empleado'}
+                              </span>
+                              <span className="text-[10px] text-zinc-400 capitalize">
+                                {log.staff?.role || 'Personal'}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                isEntry
+                                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                                  : isExit
+                                  ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                              }`}>
+                                {isEntry ? <Clock className="w-3 h-3" /> : <LogOut className="w-3 h-3" />}
+                                {isEntry ? 'Entrada' : isExit ? 'Salida' : 'Colación'}
+                              </span>
+                            </td>
+                            <td className={`p-3 text-right tabular-nums ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
+                              {new Date(log.timestamp).toLocaleString('es-CL', {
+                                day: '2-digit',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Tabla 2: Auditoría de Colaciones Consumidas */}
+            <div className={`rounded-2xl border p-5 shadow-xs space-y-4 ${
+              isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Utensils className="w-4 h-4 text-amber-500" />
+                  <h3 className={`font-extrabold text-sm ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                    Consumo de Colaciones ($0)
+                  </h3>
+                </div>
+                <span className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Descargo de Bodega
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className={`border-b ${
+                    isDark ? 'bg-zinc-950 text-zinc-400 border-zinc-800' : 'bg-slate-50 text-slate-700 border-slate-200 font-bold'
+                  }`}>
+                    <tr>
+                      <th className="p-3">Colaborador</th>
+                      <th className="p-3">Alimentos Consumidos</th>
+                      <th className="p-3 text-right">Costo Absorbido</th>
+                    </tr>
+                  </thead>
+                  <tbody className={`divide-y ${isDark ? 'divide-zinc-800' : 'divide-slate-200'}`}>
+                    {staffMeals.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="p-6 text-center text-slate-400 dark:text-zinc-500">
+                          Sin colaciones registradas hasta ahora.
+                        </td>
+                      </tr>
+                    ) : (
+                      staffMeals.map((meal) => {
+                        const mealTotal = meal.order_items.reduce(
+                          (acc, it) => acc + (it.product?.price || 0) * it.quantity,
+                          0
+                        );
+
+                        return (
+                          <tr key={meal.id} className={isDark ? 'hover:bg-zinc-800/40' : 'hover:bg-slate-50/80'}>
+                            <td className="p-3">
+                              <span className={`font-bold block font-sans ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                                {meal.staff?.name || meal.waiter_name?.replace('Colación • ', '') || 'Personal'}
+                              </span>
+                              <span className="text-[10px] text-zinc-400">
+                                {new Date(meal.created_at).toLocaleDateString('es-CL', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              <div className="space-y-0.5">
+                                {meal.order_items.map((it) => (
+                                  <span key={it.id} className="block text-[11px] font-sans">
+                                    <strong className="text-amber-500">{it.quantity}x</strong> {it.product?.name || 'Ítem'}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="p-3 text-right font-black text-amber-600 dark:text-amber-400 tabular-nums">
+                              ${mealTotal.toLocaleString('es-CL')}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Pestaña 3: Catálogo de Platos & Recetas */}
+      {adminTab === 'menu' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
