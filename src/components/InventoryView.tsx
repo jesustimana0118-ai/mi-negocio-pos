@@ -360,7 +360,7 @@ export function InventoryView({ isDark = true }: InventoryViewProps) {
                   {totalUnitsToBuy} un/kg
                 </span>
                 <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
-                  Para stock óptimo ($2 \times \text{mínimo}$)
+                  Para stock óptimo (2x stock mínimo)
                 </p>
               </div>
             </div>
