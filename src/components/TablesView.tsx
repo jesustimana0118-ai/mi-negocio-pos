@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { RestaurantTable } from '../types/database';
-import { Users, Clock, Receipt, RefreshCw, LayoutGrid } from 'lucide-react';
+import { 
+  Users, Clock, Receipt, RefreshCw, 
+  LayoutGrid, Plus, Trash2, X, Armchair 
+} from 'lucide-react';
 
 interface TablesViewProps {
   onSelectTable: (table: RestaurantTable) => void;
@@ -11,6 +14,13 @@ interface TablesViewProps {
 export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Estados del modal de nueva mesa
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [tableNumber, setTableNumber] = useState('');
+  const [tableName, setTableName] = useState('');
+  const [tableCapacity, setTableCapacity] = useState('4');
+  const [submitting, setSubmitting] = useState(false);
 
   async function loadTables() {
     setLoading(true);
@@ -42,10 +52,100 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
     };
   }, []);
 
+  const handleOpenCreateModal = () => {
+    // Sugerir el siguiente número correlativo disponible
+    const nextNum = tables.length > 0 
+      ? Math.max(...tables.map((t) => t.table_number || 0)) + 1 
+      : 1;
+    setTableNumber(nextNum.toString());
+    setTableName(`Mesa ${nextNum}`);
+    setTableCapacity('4');
+    setIsModalOpen(true);
+  };
+
+  const handleCreateTable = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const num = parseInt(tableNumber, 10);
+    const cap = parseInt(tableCapacity, 10) || 2;
+
+    if (!num || !tableName.trim()) {
+      alert('Por favor ingresa un número y nombre válido para la mesa.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase
+        .from('restaurant_tables')
+        .insert({
+          table_number: num,
+          name: tableName.trim(),
+          capacity: cap,
+          status: 'available',
+        })
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === '23505') {
+          alert(`Ya existe una mesa registrada con el número ${num}. Elige otro número.`);
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      if (data) {
+        setTables((prev) => 
+          [...prev, data as RestaurantTable].sort((a, b) => a.table_number - b.table_number)
+        );
+      }
+      setIsModalOpen(false);
+    } catch (err: any) {
+      alert('Error al crear mesa: ' + (err?.message || 'Error de base de datos'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteTable = async (e: React.MouseEvent, table: RestaurantTable) => {
+    e.stopPropagation(); // Evita seleccionar la mesa para abrir comanda
+
+    if (table.status === 'occupied') {
+      alert('No puedes eliminar una mesa que actualmente está ocupada.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `¿Seguro que deseas eliminar permanentemente la "${table.name}" (#${table.table_number})?`
+    );
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('restaurant_tables')
+        .delete()
+        .eq('id', table.id);
+
+      if (error) {
+        if (error.code === '23503') {
+          alert(`No se puede eliminar la mesa porque tiene órdenes históricas asociadas en el sistema.`);
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      setTables((prev) => prev.filter((t) => t.id !== table.id));
+    } catch (err: any) {
+      alert('Error al eliminar mesa: ' + (err?.message || 'Error de base de datos'));
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Cabecera del Plano */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className={`text-base font-extrabold flex items-center gap-2 ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
             <span className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 border border-blue-500/20">
@@ -54,21 +154,31 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
             Control del Salón
           </h2>
           <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600 font-medium'}`}>
-            Toca una mesa para abrir comanda o emitir precuenta
+            {tables.length} mesas configuradas • Toca una mesa para operar
           </p>
         </div>
-        <button
-          onClick={loadTables}
-          disabled={loading}
-          className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs ${
-            isDark
-              ? 'bg-zinc-800/90 border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-white'
-              : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-slate-200/50 hover:border-slate-300'
-          }`}
-          title="Refrescar mesas"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} />
-        </button>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleOpenCreateModal}
+            className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-xs cursor-pointer"
+          >
+            <Plus className="w-4 h-4" /> Nueva Mesa
+          </button>
+
+          <button
+            onClick={loadTables}
+            disabled={loading}
+            className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs cursor-pointer ${
+              isDark
+                ? 'bg-zinc-800/90 border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-white'
+                : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
+            }`}
+            title="Refrescar mesas"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Grid de Mesas */}
@@ -78,6 +188,14 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
         }`}>
           Sincronizando estado de las mesas...
         </div>
+      ) : tables.length === 0 ? (
+        <div className={`py-20 text-center space-y-3 rounded-2xl border ${
+          isDark ? 'border-zinc-800 bg-zinc-900/40 text-zinc-400' : 'border-slate-200 bg-white text-slate-500 shadow-xs'
+        }`}>
+          <Armchair className="w-10 h-10 mx-auto text-slate-400" />
+          <p className="font-bold text-sm">No hay mesas creadas en el salón</p>
+          <p className="text-xs">Usa el botón "+ Nueva Mesa" para comenzar a configurar el plano.</p>
+        </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
           {tables.map((table) => {
@@ -86,10 +204,10 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
             const isBilled = table.status === 'billed';
 
             return (
-              <button
+              <div
                 key={table.id}
                 onClick={() => onSelectTable(table)}
-                className={`group p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between min-h-[125px] active:scale-[0.98] ${
+                className={`group relative p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between min-h-[125px] active:scale-[0.98] cursor-pointer ${
                   isDark
                     ? isAvailable
                       ? 'bg-zinc-950/80 border-zinc-800 hover:border-zinc-600 hover:shadow-lg hover:shadow-black/20'
@@ -128,18 +246,32 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
                     </span>
                   </div>
 
-                  <span className={`flex items-center gap-1 text-[11px] font-mono shrink-0 ${
-                    isDark ? 'text-zinc-400' : 'text-slate-600 font-semibold'
-                  }`}>
-                    <Users className={`w-3.5 h-3.5 ${isDark ? 'text-zinc-500' : 'text-slate-500'}`} />
-                    {table.capacity}
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`flex items-center gap-1 text-[11px] font-mono ${
+                      isDark ? 'text-zinc-400' : 'text-slate-600 font-semibold'
+                    }`}>
+                      <Users className={`w-3.5 h-3.5 ${isDark ? 'text-zinc-500' : 'text-slate-500'}`} />
+                      {table.capacity}
+                    </span>
+
+                    {/* Botón Eliminar Mesa (visible al pasar el cursor si está disponible) */}
+                    {isAvailable && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteTable(e, table)}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-500/10 transition-all cursor-pointer"
+                        title="Eliminar mesa"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Pie con Estado */}
-                <div className="pt-3 flex items-center justify-between w-full border-t border-dashed mt-3 ${
+                <div className={`pt-3 flex items-center justify-between w-full border-t border-dashed mt-3 ${
                   isDark ? 'border-zinc-800' : 'border-slate-200/80'
-                }">
+                }`}>
                   {isAvailable && (
                     <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-300/80 dark:border-emerald-500/20 shadow-2xs">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -162,12 +294,111 @@ export function TablesView({ onSelectTable, isDark = true }: TablesViewProps) {
                   <span className={`text-[10px] font-mono font-medium transition-transform group-hover:translate-x-0.5 ${
                     isDark ? 'text-zinc-500 group-hover:text-zinc-300' : 'text-slate-500 group-hover:text-slate-900'
                   }`}>
-                    Ver →
+                    Operar →
                   </span>
                 </div>
-              </button>
+              </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Modal para Crear Nueva Mesa */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3">
+          <div className={`w-full max-w-sm rounded-2xl p-5 shadow-2xl space-y-4 border transition-all ${
+            isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            <div className={`flex items-center justify-between border-b pb-3 ${
+              isDark ? 'border-zinc-800' : 'border-slate-100'
+            }`}>
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                  <Armchair className="w-4 h-4" />
+                </span>
+                <h3 className="font-extrabold text-sm">Configurar Nueva Mesa</h3>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className={`p-1 rounded-lg transition cursor-pointer ${
+                  isDark ? 'text-zinc-400 hover:text-zinc-100' : 'text-slate-400 hover:text-slate-800'
+                }`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTable} className="space-y-3 font-mono text-xs">
+              <div className="space-y-1">
+                <label className={`block font-bold ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
+                  Número de Mesa:
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={tableNumber}
+                  onChange={(e) => setTableNumber(e.target.value)}
+                  className={`w-full rounded-xl px-3 py-2 text-sm font-bold border outline-none ${
+                    isDark ? 'bg-zinc-950 border-zinc-700 focus:border-blue-500' : 'bg-slate-50 border-slate-300 focus:border-blue-500'
+                  }`}
+                  placeholder="Ej: 7"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className={`block font-bold ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
+                  Nombre o Ubicación:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={tableName}
+                  onChange={(e) => setTableName(e.target.value)}
+                  className={`w-full rounded-xl px-3 py-2 text-sm font-sans font-medium border outline-none ${
+                    isDark ? 'bg-zinc-950 border-zinc-700 focus:border-blue-500' : 'bg-slate-50 border-slate-300 focus:border-blue-500'
+                  }`}
+                  placeholder="Ej: Mesa 7 (Terraza) o Barra 2"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className={`block font-bold ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
+                  Capacidad de personas:
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  required
+                  value={tableCapacity}
+                  onChange={(e) => setTableCapacity(e.target.value)}
+                  className={`w-full rounded-xl px-3 py-2 text-sm font-bold border outline-none ${
+                    isDark ? 'bg-zinc-950 border-zinc-700 focus:border-blue-500' : 'bg-slate-50 border-slate-300 focus:border-blue-500'
+                  }`}
+                />
+              </div>
+
+              <div className="pt-2 flex gap-2 font-sans font-bold">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className={`flex-1 py-2.5 rounded-xl border text-xs cursor-pointer transition ${
+                    isDark ? 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700' : 'bg-slate-100 border-slate-200 hover:bg-slate-200'
+                  }`}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs transition active:scale-95 shadow-md shadow-blue-600/20 cursor-pointer"
+                >
+                  {submitting ? 'Guardando...' : 'Crear Mesa'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
