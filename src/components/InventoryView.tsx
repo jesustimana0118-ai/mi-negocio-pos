@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { 
   Boxes, AlertTriangle, CheckCircle2, 
-  Plus, RefreshCw, X, ArrowDownRight, Package, Trash2 
+  Plus, RefreshCw, X, ArrowDownRight, Package, Trash2,
+  ShoppingCart, Copy, Check, DollarSign, ClipboardList, Share2
 } from 'lucide-react';
 
 interface Ingredient {
@@ -25,6 +26,8 @@ export function InventoryView({ isDark = true }: InventoryViewProps) {
   const [selectedIngredient, setSelectedIngredient] = useState<Ingredient | null>(null);
   const [incomingQty, setIncomingQty] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState<'stock' | 'shopping'>('stock');
+  const [copied, setCopied] = useState(false);
 
   async function loadInventory() {
     setLoading(true);
@@ -62,7 +65,7 @@ export function InventoryView({ isDark = true }: InventoryViewProps) {
         movement_type: 'purchase',
         quantity: qty,
         unit_cost: selectedIngredient.cost_per_unit,
-        reason: 'Recepción manual de mercadería'
+        reason: 'Recepción de compra / reposición'
       });
 
       setSelectedIngredient(null);
@@ -100,150 +103,396 @@ export function InventoryView({ isDark = true }: InventoryViewProps) {
     }
   };
 
-  const criticalItems = ingredients.filter(i => i.current_stock <= i.min_stock);
+  // Filtrado y cálculo de reposición sugerida
+  const criticalItems = ingredients.filter((i) => Number(i.current_stock) <= Number(i.min_stock));
+
+  const shoppingList = criticalItems.map((item) => {
+    const targetStock = Number(item.min_stock) * 2;
+    const neededQty = Math.max(1, Math.ceil(targetStock - Number(item.current_stock)));
+    const estimatedCost = neededQty * (Number(item.cost_per_unit) || 0);
+
+    return {
+      ...item,
+      suggested_qty: neededQty,
+      estimated_cost: estimatedCost,
+    };
+  });
+
+  const totalEstimatedBudget = shoppingList.reduce((acc, it) => acc + it.estimated_cost, 0);
+  const totalUnitsToBuy = shoppingList.reduce((acc, it) => acc + it.suggested_qty, 0);
+
+  const handleCopyWhatsApp = () => {
+    if (shoppingList.length === 0) return;
+
+    const dateStr = new Date().toLocaleDateString('es-CL', { day: '2-digit', month: 'short' });
+    const lines = [
+      `🛒 *LISTA DE COMPRAS & REPOSICIÓN*`,
+      `📅 Fecha: ${dateStr}`,
+      `🏢 Mi Negocio POS — Control de Bodega\n`,
+      `*INSUMOS CRÍTICOS (${shoppingList.length}):*`,
+      ...shoppingList.map(
+        (it, idx) =>
+          `${idx + 1}. *${it.name}* ➔ *${it.suggested_qty} ${it.unit}* (Stock: ${Number(it.current_stock).toFixed(1)} / Min: ${it.min_stock})`
+      ),
+      `\n💰 *Presupuesto Estimado:* $${totalEstimatedBudget.toLocaleString('es-CL')} CLP`,
+      `⚡ _Generado automáticamente para reposición._`
+    ];
+
+    navigator.clipboard.writeText(lines.join('\n'));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2200);
+  };
 
   return (
     <div className="space-y-5">
-      {/* Cabecera de Bodega */}
-      <div className="flex items-center justify-between">
+      {/* Cabecera de Bodega con Selector de Pestañas */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h2 className={`text-base font-extrabold flex items-center gap-2 ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
             <span className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 border border-blue-500/20">
               <Boxes className="w-4 h-4" />
             </span>
-            Control de Bodega & Materias Primas
+            Control de Bodega & Abastecimiento
           </h2>
           <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600 font-medium'}`}>
-            Stock en tiempo real, niveles de seguridad y reposición
+            Stock en tiempo real, alertas críticas y reposición inteligente
           </p>
         </div>
-        <button
-          onClick={loadInventory}
-          disabled={loading}
-          className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs cursor-pointer ${
-            isDark 
-              ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white' 
-              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-          }`}
-          title="Actualizar bodega"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} />
-        </button>
+
+        <div className="flex items-center gap-2">
+          <div className={`flex p-1 rounded-xl border ${isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-100 border-slate-200'}`}>
+            <button
+              onClick={() => setActiveTab('stock')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'stock'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Boxes className="w-3.5 h-3.5" /> Stock Actual
+            </button>
+            <button
+              onClick={() => setActiveTab('shopping')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 relative ${
+                activeTab === 'shopping'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <ShoppingCart className="w-3.5 h-3.5" /> Lista de Compras
+              {criticalItems.length > 0 && (
+                <span className="px-1.5 py-0.2 text-[10px] font-black rounded-full bg-rose-500 text-white">
+                  {criticalItems.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          <button
+            onClick={loadInventory}
+            disabled={loading}
+            className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs cursor-pointer ${
+              isDark 
+                ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white' 
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+            }`}
+            title="Actualizar bodega"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} />
+          </button>
+        </div>
       </div>
 
-      {/* Alerta de Stock Crítico */}
-      {criticalItems.length > 0 && (
-        <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center justify-between text-xs text-rose-600 dark:text-rose-400 shadow-xs">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
-            <span>
-              Atención: <strong>{criticalItems.length} insumo(s)</strong> están por debajo del stock mínimo.
-            </span>
-          </div>
-          <span className="text-[11px] font-mono font-bold bg-rose-500/20 px-2.5 py-0.5 rounded-lg border border-rose-500/30">
-            Revisar Urgente
-          </span>
-        </div>
-      )}
+      {/* Pestaña 1: Stock en Bodega */}
+      {activeTab === 'stock' && (
+        <>
+          {criticalItems.length > 0 && (
+            <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center justify-between text-xs text-rose-600 dark:text-rose-400 shadow-xs">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                <span>
+                  Atención: <strong>{criticalItems.length} insumo(s)</strong> están por debajo del stock mínimo.
+                </span>
+              </div>
+              <button
+                onClick={() => setActiveTab('shopping')}
+                className="text-[11px] font-mono font-bold bg-rose-500 hover:bg-rose-600 text-white px-3 py-1 rounded-lg transition-all cursor-pointer shadow-xs"
+              >
+                Ver Lista de Reposición →
+              </button>
+            </div>
+          )}
 
-      {/* Tabla de Insumos */}
-      <div className={`rounded-2xl border overflow-hidden shadow-xs transition-all ${
-        isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
-      }`}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs font-mono">
-            <thead className={`border-b ${
-              isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-400' : 'bg-slate-50 border-slate-200 text-slate-700 font-bold'
-            }`}>
-              <tr>
-                <th className="p-3.5">SKU / Insumo</th>
-                <th className="p-3.5 text-right">Stock Actual</th>
-                <th className="p-3.5 text-right">Mínimo</th>
-                <th className="p-3.5 text-center">Estado</th>
-                <th className="p-3.5 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className={`divide-y ${isDark ? 'divide-zinc-800/80' : 'divide-slate-200/80'}`}>
-              {ingredients.length === 0 && !loading ? (
-                <tr>
-                  <td colSpan={5} className="p-8 text-center text-xs text-slate-400 dark:text-zinc-500 font-mono">
-                    No hay insumos registrados en bodega.
-                  </td>
-                </tr>
-              ) : (
-                ingredients.map((item) => {
-                  const isUnderMin = item.current_stock <= item.min_stock;
-                  const isWarning = !isUnderMin && item.current_stock <= item.min_stock * 1.5;
-
-                  return (
-                    <tr key={item.id} className={`transition-colors ${
-                      isDark ? 'hover:bg-zinc-800/40' : 'hover:bg-slate-50/80'
-                    }`}>
-                      <td className="p-3.5">
-                        <span className={`text-[10px] uppercase block font-mono font-bold ${
-                          isDark ? 'text-zinc-400' : 'text-slate-500'
-                        }`}>
-                          {item.sku}
-                        </span>
-                        <span className={`font-sans font-bold text-xs ${
-                          isDark ? 'text-zinc-100' : 'text-slate-900'
-                        }`}>
-                          {item.name}
-                        </span>
-                      </td>
-                      <td className={`p-3.5 text-right font-black tabular-nums ${
-                        isDark ? 'text-zinc-100' : 'text-slate-900'
-                      }`}>
-                        {Number(item.current_stock).toFixed(2)} <span className={`font-normal ${
-                          isDark ? 'text-zinc-400' : 'text-slate-500'
-                        }`}>{item.unit}</span>
-                      </td>
-                      <td className={`p-3.5 text-right tabular-nums ${
-                        isDark ? 'text-zinc-400' : 'text-slate-600 font-semibold'
-                      }`}>
-                        {Number(item.min_stock).toFixed(2)} {item.unit}
-                      </td>
-                      <td className="p-3.5 text-center">
-                        {isUnderMin ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
-                            <AlertTriangle className="w-3 h-3" /> Crítico
-                          </span>
-                        ) : isWarning ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                            <ArrowDownRight className="w-3 h-3" /> Bajo
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                            <CheckCircle2 className="w-3 h-3" /> Óptimo
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => setSelectedIngredient(item)}
-                            className="px-2.5 py-1.5 bg-blue-600/10 hover:bg-blue-600 text-blue-600 hover:text-white border border-blue-500/30 rounded-lg transition-all active:scale-95 inline-flex items-center gap-1 text-xs font-sans font-bold cursor-pointer shadow-2xs"
-                            title="Recepcionar compra"
-                          >
-                            <Plus className="w-3.5 h-3.5" /> Ingresar
-                          </button>
-                          <button
-                            onClick={() => handleDeleteIngredient(item)}
-                            className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 rounded-lg transition-all active:scale-95 cursor-pointer"
-                            title="Eliminar insumo"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+          <div className={`rounded-2xl border overflow-hidden shadow-xs transition-all ${
+            isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
+          }`}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className={`border-b ${
+                  isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-400' : 'bg-slate-50 border-slate-200 text-slate-700 font-bold'
+                }`}>
+                  <tr>
+                    <th className="p-3.5">SKU / Insumo</th>
+                    <th className="p-3.5 text-right">Stock Actual</th>
+                    <th className="p-3.5 text-right">Mínimo</th>
+                    <th className="p-3.5 text-center">Estado</th>
+                    <th className="p-3.5 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className={`divide-y ${isDark ? 'divide-zinc-800/80' : 'divide-slate-200/80'}`}>
+                  {ingredients.length === 0 && !loading ? (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-xs text-slate-400 dark:text-zinc-500 font-mono">
+                        No hay insumos registrados en bodega.
                       </td>
                     </tr>
-                  );
-                })
+                  ) : (
+                    ingredients.map((item) => {
+                      const isUnderMin = Number(item.current_stock) <= Number(item.min_stock);
+                      const isWarning = !isUnderMin && Number(item.current_stock) <= Number(item.min_stock) * 1.5;
+
+                      return (
+                        <tr key={item.id} className={`transition-colors ${
+                          isDark ? 'hover:bg-zinc-800/40' : 'hover:bg-slate-50/80'
+                        }`}>
+                          <td className="p-3.5">
+                            <span className={`text-[10px] uppercase block font-mono font-bold ${
+                              isDark ? 'text-zinc-400' : 'text-slate-500'
+                            }`}>
+                              {item.sku}
+                            </span>
+                            <span className={`font-sans font-bold text-xs ${
+                              isDark ? 'text-zinc-100' : 'text-slate-900'
+                            }`}>
+                              {item.name}
+                            </span>
+                          </td>
+                          <td className={`p-3.5 text-right font-black tabular-nums ${
+                            isDark ? 'text-zinc-100' : 'text-slate-900'
+                          }`}>
+                            {Number(item.current_stock).toFixed(2)} <span className={`font-normal ${
+                              isDark ? 'text-zinc-400' : 'text-slate-500'
+                            }`}>{item.unit}</span>
+                          </td>
+                          <td className={`p-3.5 text-right tabular-nums ${
+                            isDark ? 'text-zinc-400' : 'text-slate-600 font-semibold'
+                          }`}>
+                            {Number(item.min_stock).toFixed(2)} {item.unit}
+                          </td>
+                          <td className="p-3.5 text-center">
+                            {isUnderMin ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                                <AlertTriangle className="w-3 h-3" /> Crítico
+                              </span>
+                            ) : isWarning ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                                <ArrowDownRight className="w-3 h-3" /> Bajo
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                                <CheckCircle2 className="w-3 h-3" /> Óptimo
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setSelectedIngredient(item);
+                                  setIncomingQty('');
+                                }}
+                                className="px-2.5 py-1.5 bg-blue-600/10 hover:bg-blue-600 text-blue-600 hover:text-white border border-blue-500/30 rounded-lg transition-all active:scale-95 inline-flex items-center gap-1 text-xs font-sans font-bold cursor-pointer shadow-2xs"
+                                title="Recepcionar compra"
+                              >
+                                <Plus className="w-3.5 h-3.5" /> Ingresar
+                              </button>
+                              <button
+                                onClick={() => handleDeleteIngredient(item)}
+                                className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 rounded-lg transition-all active:scale-95 cursor-pointer"
+                                title="Eliminar insumo"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Pestaña 2: Lista de Compras & Abastecimiento Sugerido */}
+      {activeTab === 'shopping' && (
+        <div className="space-y-5">
+          {/* Tarjetas de Presupuesto */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-xs font-bold text-rose-600 dark:text-rose-400">
+                <span>Insumos Críticos</span>
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div className="mt-3">
+                <span className="text-2xl font-black text-slate-900 dark:text-zinc-100">
+                  {shoppingList.length} ítems
+                </span>
+                <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Bajo el nivel de seguridad
+                </p>
+              </div>
+            </div>
+
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-xs font-bold text-blue-600 dark:text-blue-400">
+                <span>Total a Comprar</span>
+                <ClipboardList className="w-4 h-4" />
+              </div>
+              <div className="mt-3">
+                <span className="text-2xl font-black text-slate-900 dark:text-zinc-100">
+                  {totalUnitsToBuy} un/kg
+                </span>
+                <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Para stock óptimo ($2 \times \text{mínimo}$)
+                </p>
+              </div>
+            </div>
+
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                <span>Presupuesto Estimado</span>
+                <DollarSign className="w-4 h-4" />
+              </div>
+              <div className="mt-3">
+                <span className="text-2xl font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                  ${totalEstimatedBudget.toLocaleString('es-CL')}
+                </span>
+                <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Efectivo estimado para reposición
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Barra de acción de exportación */}
+          <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 ${
+            isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-emerald-50/60 border-emerald-200'
+          }`}>
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-emerald-600 text-white">
+                <Share2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold">Enviar Pedido al Comprador o Proveedor</h3>
+                <p className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
+                  Copia la lista formateada para WhatsApp o bloc de notas
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleCopyWhatsApp}
+              disabled={shoppingList.length === 0}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all active:scale-95 shadow-md cursor-pointer ${
+                copied
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-emerald-500/20'
+              }`}
+            >
+              {copied ? (
+                <>
+                  <Check className="w-4 h-4 stroke-[3]" /> ¡Copiado al Portapapeles!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4" /> Copiar para WhatsApp
+                </>
               )}
-            </tbody>
-          </table>
+            </button>
+          </div>
+
+          {/* Tabla de Reposición Sugerida */}
+          <div className={`rounded-2xl border overflow-hidden shadow-xs transition-all ${
+            isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
+          }`}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className={`border-b ${
+                  isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-400' : 'bg-slate-50 border-slate-200 text-slate-700 font-bold'
+                }`}>
+                  <tr>
+                    <th className="p-3.5">Insumo a Reponer</th>
+                    <th className="p-3.5 text-right">Stock Actual</th>
+                    <th className="p-3.5 text-right">Mínimo</th>
+                    <th className="p-3.5 text-center">Compra Sugerida</th>
+                    <th className="p-3.5 text-right">Costo Est.</th>
+                    <th className="p-3.5 text-right">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className={`divide-y ${isDark ? 'divide-zinc-800/80' : 'divide-slate-200/80'}`}>
+                  {shoppingList.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-10 text-center text-slate-400 dark:text-zinc-500">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                        <p className="font-bold font-sans text-slate-700 dark:text-zinc-200">Bodega Abastecida al 100%</p>
+                        <p className="text-[11px]">No hay materias primas por debajo del stock mínimo de seguridad.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    shoppingList.map((item) => (
+                      <tr key={item.id} className={isDark ? 'hover:bg-zinc-800/40' : 'hover:bg-slate-50/80'}>
+                        <td className="p-3.5">
+                          <span className={`font-sans font-bold text-xs block ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                            {item.name}
+                          </span>
+                          <span className="text-[10px] text-zinc-400 uppercase font-mono">
+                            {item.sku}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-right text-rose-600 dark:text-rose-400 font-bold tabular-nums">
+                          {Number(item.current_stock).toFixed(1)} {item.unit}
+                        </td>
+                        <td className="p-3.5 text-right text-zinc-400 tabular-nums">
+                          {item.min_stock} {item.unit}
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <span className="inline-flex items-center gap-1 text-xs font-black font-mono px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                            +{item.suggested_qty} {item.unit}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-right font-black tabular-nums text-slate-800 dark:text-zinc-200">
+                          ${item.estimated_cost.toLocaleString('es-CL')}
+                        </td>
+                        <td className="p-3.5 text-right">
+                          <button
+                            onClick={() => {
+                              setSelectedIngredient(item);
+                              setIncomingQty(item.suggested_qty.toString());
+                            }}
+                            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs transition-all active:scale-95 cursor-pointer shadow-2xs"
+                            title="Ingresar compra directa con cantidad sugerida"
+                          >
+                            Recepcionar
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Modal para Ingreso de Mercadería */}
       {selectedIngredient && (
