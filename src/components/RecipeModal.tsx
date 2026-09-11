@@ -152,6 +152,7 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
       <div className="bg-zinc-900 border border-zinc-800 text-zinc-100 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-5">
         
+        {/* Cabecera */}
         <div className="flex items-center justify-between border-b border-zinc-800 pb-3.5">
           <div className="flex items-center gap-2.5">
             <span className="p-2 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20">
@@ -172,6 +173,7 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
           </button>
         </div>
 
+        {/* Tarjetas financieras */}
         <div className="grid grid-cols-3 gap-2.5 bg-zinc-950 p-3.5 rounded-2xl border border-zinc-800/80 font-mono text-xs">
           <div>
             <span className="text-[10px] text-zinc-400 block">Venta Neta:</span>
@@ -195,15 +197,16 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
           </div>
         </div>
 
-        <div className="space-y-2">
-          <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
-            <Scale className="w-3.5 h-3.5 text-violet-400" /> Vincular Materia Prima de Bodega:
-          </label>
-          <div className="flex gap-2">
+        {/* Formulario de vinculación con diseño espacioso */}
+        <div className="space-y-3 bg-zinc-950/70 p-4 rounded-2xl border border-zinc-800">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+              <Scale className="w-3.5 h-3.5 text-violet-400" /> Insumo de Bodega:
+            </label>
             <select
               value={selectedIngredientId}
               onChange={(e) => handleSelectIngredient(e.target.value)}
-              className="flex-1 bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs font-bold text-zinc-100 outline-none focus:border-violet-500 cursor-pointer"
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-xs font-bold text-zinc-100 outline-none focus:border-violet-500 cursor-pointer"
             >
               <option value="">Selecciona un insumo...</option>
               {availableIngredients.map((ing) => (
@@ -212,35 +215,43 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
                 </option>
               ))}
             </select>
+          </div>
 
-            <div className="relative w-32 flex items-center">
-              <input
-                type="number"
-                step={selectedIng?.unit === 'unit' ? '1' : '0.001'}
-                min="0.001"
-                placeholder={selectedIng?.unit === 'unit' ? '1' : '0.15'}
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl pl-3 pr-10 py-2 text-xs font-mono font-black text-zinc-100 outline-none focus:border-violet-500 text-right"
-              />
-              <span className="absolute right-2.5 text-[10px] font-mono text-violet-400 font-bold pointer-events-none uppercase">
-                {selectedIng?.unit || 'un'}
-              </span>
+          <div className="flex items-end gap-3 pt-1">
+            <div className="flex-1 space-y-1.5">
+              <label className="text-[11px] font-mono text-zinc-400">
+                Cantidad a descontar por plato:
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  step={selectedIng?.unit === 'unit' ? '1' : '0.001'}
+                  min="0.001"
+                  placeholder="1"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm font-mono font-black text-zinc-100 outline-none focus:border-violet-500"
+                />
+                <span className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-xs font-mono font-bold text-violet-300 uppercase shrink-0">
+                  {selectedIng?.unit || 'unit'}
+                </span>
+              </div>
             </div>
 
             <button
               onClick={handleAddItem}
               disabled={!selectedIngredientId}
-              className="px-3 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold flex items-center gap-1 transition cursor-pointer shrink-0"
+              className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer shrink-0 h-[38px]"
             >
               <Plus className="w-4 h-4" /> Agregar
             </button>
           </div>
         </div>
 
+        {/* Lista de ingredientes agregados */}
         <div className="space-y-2">
           <span className="text-xs font-bold text-zinc-400">Ingredientes en la Receta ({recipeItems.length}):</span>
-          <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 font-mono text-xs">
+          <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1 font-mono text-xs">
             {recipeItems.length === 0 ? (
               <div className="p-6 text-center border border-dashed border-zinc-800 rounded-2xl text-zinc-500">
                 <Layers className="w-6 h-6 mx-auto mb-1.5 opacity-40" />
@@ -285,6 +296,7 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
           </div>
         </div>
 
+        {/* Botón Guardar */}
         <button
           onClick={handleSaveRecipe}
           disabled={saving}
