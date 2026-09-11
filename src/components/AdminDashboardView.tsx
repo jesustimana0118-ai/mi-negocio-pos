@@ -8,7 +8,7 @@ import {
   Flame, RefreshCw, BarChart3, Users, Utensils, 
   Plus, Edit3, Layers, Tag, Trash2, UserCheck, 
   Clock, LogOut, Coffee, ShieldCheck, Calculator, ArrowUpRight,
-  FileSpreadsheet
+  FileSpreadsheet, FileText
 } from 'lucide-react';
 
 interface ShiftAudit {
@@ -273,7 +273,7 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
     : 0;
 
   // Función de Descarga del Reporte Completo en Excel/CSV
-const handleExportReport = () => {
+  const handleExportReport = () => {
     const now = new Date();
     const formattedDate = now.toLocaleDateString('es-CL');
     const formattedTime = now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
@@ -366,7 +366,187 @@ const handleExportReport = () => {
     link.click();
     document.body.removeChild(link);
   };
-  
+
+  // Función para abrir la vista ejecutiva de impresión / PDF con gráficos SVG
+  const handlePrintPDFReport = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Por favor, permite las ventanas emergentes (pop-ups) en tu navegador para generar el reporte PDF.');
+      return;
+    }
+
+    const now = new Date();
+    const formattedDate = now.toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' });
+    const formattedTime = now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Reporte Gerencial & Auditoría - POS Gastronómico</title>
+        <style>
+          @page { size: A4; margin: 16mm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1f2937; line-height: 1.4; margin: 0; padding: 0; background: #ffffff; }
+          .header { border-bottom: 2px solid #7c3aed; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+          .title h1 { font-size: 20px; font-weight: 900; color: #111827; margin: 0; }
+          .title p { font-size: 11px; color: #6b7280; margin: 3px 0 0 0; font-family: monospace; }
+          .meta { text-align: right; font-size: 11px; color: #4b5563; font-family: monospace; }
+          .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+          .kpi-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; }
+          .kpi-card span { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #6b7280; display: block; }
+          .kpi-card .val { font-size: 17px; font-weight: 900; color: #111827; margin-top: 3px; font-family: monospace; }
+          section { margin-bottom: 22px; page-break-inside: avoid; }
+          h3 { font-size: 13px; font-weight: 800; color: #374151; border-left: 4px solid #7c3aed; padding-left: 8px; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+          table { width: 100%; border-collapse: collapse; font-size: 10.5px; font-family: monospace; }
+          th { background: #f3f4f6; color: #374151; font-weight: 700; text-align: left; padding: 6px 8px; border-bottom: 1px solid #d1d5db; }
+          td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; color: #1f2937; }
+          .text-right { text-align: right; }
+          .text-center { text-align: center; }
+          .badge { display: inline-block; padding: 1px 7px; border-radius: 9999px; font-size: 9.5px; font-weight: 800; }
+          .badge-green { background: #d1fae5; color: #065f46; }
+          .badge-amber { background: #fef3c7; color: #92400e; }
+          .chart-container { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 15px; margin-top: 12px; }
+          .bar-row { display: flex; align-items: center; margin-bottom: 7px; font-size: 10.5px; font-family: monospace; }
+          .bar-label { width: 150px; font-weight: 700; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .bar-track { flex: 1; background: #e5e7eb; height: 11px; border-radius: 6px; margin: 0 10px; overflow: hidden; }
+          .bar-fill { background: linear-gradient(90deg, #7c3aed, #a855f7); height: 100%; border-radius: 6px; }
+          .bar-value { width: 65px; text-align: right; font-weight: 800; color: #4b5563; }
+          .footer { margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 10px; display: flex; justify-content: space-between; font-size: 9.5px; color: #9ca3af; font-family: monospace; }
+          @media print { body { -webkit-print-color-adjust: exact; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="title">
+            <h1>Reporte Gerencial & Auditoría Operativa</h1>
+            <p>Sistema POS Gastronómico — Control Tributario, Asistencia y Costos</p>
+          </div>
+          <div class="meta">
+            <div>Emisión: ${formattedDate}</div>
+            <div>Hora: ${formattedTime}</div>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span>Ventas Brutas</span>
+            <div class="val" style="color: #059669;">$${totalGrossSales.toLocaleString('es-CL')}</div>
+          </div>
+          <div class="kpi-card">
+            <span>IVA Débito (19%)</span>
+            <div class="val" style="color: #0d9488;">$${totalIvaDebit.toLocaleString('es-CL')}</div>
+          </div>
+          <div class="kpi-card">
+            <span>Food Cost Promedio</span>
+            <div class="val" style="color: #7c3aed;">${avgFoodCost}%</div>
+          </div>
+          <div class="kpi-card">
+            <span>Pozo Propinas</span>
+            <div class="val" style="color: #2563eb;">$${totalTipsPool.toLocaleString('es-CL')}</div>
+          </div>
+        </div>
+
+        <section>
+          <h3>1. Gráfico & Análisis de Rentabilidad de Carta (Food Cost %)</h3>
+          <div class="chart-container">
+            <div style="font-size: 10.5px; font-weight: 800; margin-bottom: 8px; color: #4b5563; text-transform: uppercase;">Porcentaje de Costo de Insumos sobre Venta Neta</div>
+            ${productsList.map(p => {
+              const fc = p.food_cost_pct || 0;
+              return `
+                <div class="bar-row">
+                  <div class="bar-label" title="${p.name}">${p.name}</div>
+                  <div class="bar-track">
+                    <div class="bar-fill" style="width: ${Math.min(fc, 100)}%;"></div>
+                  </div>
+                  <div class="bar-value">${fc}%</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+
+          <table style="margin-top: 10px;">
+            <thead>
+              <tr>
+                <th>Plato / Producto</th>
+                <th>Categoría</th>
+                <th class="text-right">Precio Venta (IVA Inc.)</th>
+                <th class="text-right">Costo Insumos</th>
+                <th class="text-center">Food Cost %</th>
+                <th class="text-right">Margen Neto ($)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${productsList.map(p => `
+                <tr>
+                  <td><strong>${p.name}</strong></td>
+                  <td>${p.category}</td>
+                  <td class="text-right">$${p.price.toLocaleString('es-CL')}</td>
+                  <td class="text-right">$${(p.recipe_cost || 0).toLocaleString('es-CL')}</td>
+                  <td class="text-center">
+                    <span class="badge ${ (p.food_cost_pct || 0) <= 32 ? 'badge-green' : 'badge-amber' }">
+                      ${p.food_cost_pct || 0}%
+                    </span>
+                  </td>
+                  <td class="text-right" style="color: #059669; font-weight: 800;">+$${(p.net_margin || 0).toLocaleString('es-CL')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </section>
+
+        <section>
+          <h3>2. Auditoría Antifraude de Turnos de Caja</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Apertura</th>
+                <th>Estado</th>
+                <th class="text-right">Fondo Inicial</th>
+                <th class="text-right">Efectivo Sistema</th>
+                <th class="text-right">Efectivo Declarado</th>
+                <th class="text-center">Descuadre</th>
+                <th class="text-right">Venta Turno</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${shifts.length === 0 ? '<tr><td colspan="7" class="text-center">Sin turnos registrados</td></tr>' : shifts.map(s => `
+                <tr>
+                  <td>${new Date(s.opened_at).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td>${s.status === 'open' ? 'En curso' : 'Cerrado'}</td>
+                  <td class="text-right">$${(Number(s.initial_cash) || 0).toLocaleString('es-CL')}</td>
+                  <td class="text-right">$${(Number(s.expected_cash) || Number(s.initial_cash)).toLocaleString('es-CL')}</td>
+                  <td class="text-right">${s.declared_cash !== null ? `$${Number(s.declared_cash).toLocaleString('es-CL')}` : 'Pendiente'}</td>
+                  <td class="text-center">
+                    <span class="badge ${ (s.cash_discrepancy || 0) === 0 ? 'badge-green' : 'badge-amber' }">
+                      ${(s.cash_discrepancy || 0) === 0 ? 'Exacto' : `$${s.cash_discrepancy}`}
+                    </span>
+                  </td>
+                  <td class="text-right" style="font-weight: 800; color: #059669;">$${(Number(s.total_sales) || 0).toLocaleString('es-CL')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </section>
+
+        <div class="footer">
+          <div>Sistema POS Gastronómico • Módulo de Auditoría Gerencial</div>
+          <div>Documento confidencial emitido para administración</div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.print();
+          }
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   return (
     <div className="space-y-6">
       {/* Barra de cabecera */}
@@ -386,6 +566,16 @@ const handleExportReport = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Botón Reporte PDF Gerencial con Gráficas */}
+          <button
+            onClick={handlePrintPDFReport}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+            title="Generar e imprimir Reporte Ejecutivo con Gráficas en PDF"
+          >
+            <FileText className="w-4 h-4" />
+            <span>Reporte PDF Gerencial</span>
+          </button>
+
           {/* Botón Exportar Planilla Contable */}
           <button
             onClick={handleExportReport}
