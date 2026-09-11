@@ -31,6 +31,7 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
   const [recipeItems, setRecipeItems] = useState<RecipeItem[]>([]);
   const [selectedIngredientId, setSelectedIngredientId] = useState<string>('');
   const [quantity, setQuantity] = useState<string>('1');
+  const [inputUnit, setInputUnit] = useState<string>('unit');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -77,12 +78,19 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
     const found = availableIngredients.find((i) => i.id === ingId);
     if (!found) return;
 
-    if (found.unit === 'unit') {
-      setQuantity('1');
-    } else if (found.unit === 'kg' || found.unit === 'lt') {
-      setQuantity('0.15');
+    const baseUnit = (found.unit || 'unit').toLowerCase();
+    if (baseUnit === 'kg') {
+      setInputUnit('gr');
+      setQuantity('150');
+    } else if (baseUnit === 'lt') {
+      setInputUnit('ml');
+      setQuantity('200');
+    } else if (baseUnit === 'gr') {
+      setInputUnit('gr');
+      setQuantity('100');
     } else {
-      setQuantity('50');
+      setInputUnit('unit');
+      setQuantity('1');
     }
   };
 
@@ -90,23 +98,36 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
 
   const handleAddItem = () => {
     if (!selectedIngredientId || !quantity) return;
-    const qty = parseFloat(quantity);
-    if (isNaN(qty) || qty <= 0) return;
+    const rawQty = parseFloat(quantity);
+    if (isNaN(rawQty) || rawQty <= 0) return;
 
     const ing = availableIngredients.find((i) => i.id === selectedIngredientId);
     if (!ing) return;
 
+    // Conversión a la unidad base de bodega
+    let finalQty = rawQty;
+    const baseUnit = (ing.unit || 'unit').toLowerCase();
+
+    if (baseUnit === 'kg' && inputUnit === 'gr') {
+      finalQty = rawQty / 1000;
+    } else if (baseUnit === 'lt' && inputUnit === 'ml') {
+      finalQty = rawQty / 1000;
+    } else if (baseUnit === 'gr' && inputUnit === 'kg') {
+      finalQty = rawQty * 1000;
+    }
+
     const existingIndex = recipeItems.findIndex((r) => r.ingredient_id === selectedIngredientId);
     if (existingIndex >= 0) {
       const updated = [...recipeItems];
-      updated[existingIndex].quantity += qty;
+      updated[existingIndex].quantity += finalQty;
       setRecipeItems(updated);
     } else {
-      setRecipeItems([...recipeItems, { ingredient_id: selectedIngredientId, quantity: qty, ingredient: ing }]);
+      setRecipeItems([...recipeItems, { ingredient_id: selectedIngredientId, quantity: finalQty, ingredient: ing }]);
     }
 
     setSelectedIngredientId('');
     setQuantity('1');
+    setInputUnit('unit');
   };
 
   const handleRemoveItem = (index: number) => {
@@ -135,6 +156,19 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const formatDisplayQty = (qty: number, unit: string) => {
+    const u = (unit || 'unit').toLowerCase();
+    if (u === 'kg') {
+      if (qty < 1) return `${Math.round(qty * 1000)} gr (${qty} kg)`;
+      return `${qty} kg`;
+    }
+    if (u === 'lt') {
+      if (qty < 1) return `${Math.round(qty * 1000)} ml (${qty} lt)`;
+      return `${qty} lt`;
+    }
+    return `${qty} ${unit}`;
   };
 
   const netPrice = Math.round(Number(product.price) / 1.19);
@@ -173,7 +207,7 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
           </button>
         </div>
 
-        {/* Tarjetas financieras */}
+        {/* Tarjetas financieras en vivo */}
         <div className="grid grid-cols-3 gap-2.5 bg-zinc-950 p-3.5 rounded-2xl border border-zinc-800/80 font-mono text-xs">
           <div>
             <span className="text-[10px] text-zinc-400 block">Venta Neta:</span>
@@ -197,7 +231,7 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
           </div>
         </div>
 
-        {/* Formulario de vinculación con diseño espacioso */}
+        {/* Formulario de vinculación */}
         <div className="space-y-3 bg-zinc-950/70 p-4 rounded-2xl border border-zinc-800">
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
@@ -217,25 +251,50 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
             </select>
           </div>
 
-          <div className="flex items-end gap-3 pt-1">
+          <div className="flex items-end gap-2.5 pt-1">
             <div className="flex-1 space-y-1.5">
               <label className="text-[11px] font-mono text-zinc-400">
-                Cantidad a descontar por plato:
+                Cantidad por plato:
               </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  step={selectedIng?.unit === 'unit' ? '1' : '0.001'}
-                  min="0.001"
-                  placeholder="1"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm font-mono font-black text-zinc-100 outline-none focus:border-violet-500"
-                />
-                <span className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-xs font-mono font-bold text-violet-300 uppercase shrink-0">
-                  {selectedIng?.unit || 'unit'}
-                </span>
-              </div>
+              <input
+                type="number"
+                step={inputUnit === 'unit' ? '1' : 'any'}
+                min="0.001"
+                placeholder="1"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm font-mono font-black text-zinc-100 outline-none focus:border-violet-500"
+              />
+            </div>
+
+            {/* Selector interactivo de unidades */}
+            <div className="w-32 space-y-1.5">
+              <label className="text-[11px] font-mono text-zinc-400">
+                Unidad:
+              </label>
+              <select
+                value={inputUnit}
+                onChange={(e) => setInputUnit(e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-2.5 py-2 text-xs font-mono font-bold text-violet-300 outline-none focus:border-violet-500 cursor-pointer h-[38px]"
+              >
+                {selectedIng?.unit === 'kg' ? (
+                  <>
+                    <option value="gr">Gramos (gr)</option>
+                    <option value="kg">Kilos (kg)</option>
+                  </>
+                ) : selectedIng?.unit === 'lt' ? (
+                  <>
+                    <option value="ml">Mililitros (ml)</option>
+                    <option value="lt">Litros (lt)</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="unit">Unidad (un)</option>
+                    <option value="gr">Gramos (gr)</option>
+                    <option value="kg">Kilos (kg)</option>
+                  </>
+                )}
+              </select>
             </div>
 
             <button
@@ -273,7 +332,7 @@ export function RecipeModal({ product, onClose }: RecipeModalProps) {
                         {item.ingredient?.name || 'Insumo'}
                       </span>
                       <span className="text-[10px] text-zinc-400">
-                        {item.quantity} {item.ingredient?.unit} × ${unitCost.toLocaleString('es-CL')}
+                        {formatDisplayQty(item.quantity, item.ingredient?.unit || 'unit')} × ${unitCost.toLocaleString('es-CL')}/{item.ingredient?.unit || 'un'}
                       </span>
                     </div>
 
