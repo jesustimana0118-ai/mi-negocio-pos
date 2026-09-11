@@ -8,7 +8,7 @@ interface KitchenOrderItem {
   quantity: number;
   status: 'pending' | 'preparing' | 'ready' | 'completed';
   created_at?: string;
-  product: {
+  product?: {
     name: string;
   };
 }
@@ -36,54 +36,69 @@ export function KitchenView({ isDark = false }: KitchenViewProps) {
   async function loadKitchenOrders(isBackground = false) {
     if (!isBackground) setLoading(true);
 
-    const { data: ordersData } = await supabase
-      .from('orders')
-      .select(`
-        id,
-        order_number,
-        created_at,
-        waiter_name,
-        table:restaurant_tables(table_number, name)
-      `)
-      .eq('status', 'open')
-      .order('created_at', { ascending: true });
-
-    if (ordersData && ordersData.length > 0) {
-      const orderIds = ordersData.map((o) => o.id);
-
-      const { data: itemsData } = await supabase
-        .from('order_items')
+    try {
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
         .select(`
           id,
-          order_id,
-          quantity,
-          status,
+          order_number,
           created_at,
-          product:products(name)
+          waiter_name,
+          table:restaurant_tables(table_number, name)
         `)
-        .in('order_id', orderIds)
-        .order('id', { ascending: true });
+        .eq('status', 'open')
+        .order('created_at', { ascending: true });
 
-      const itemsList = (itemsData || []) as unknown as KitchenOrderItem[];
+      if (ordersError) throw ordersError;
 
-const grouped = ordersData
-  .map((order: any) => ({
-    id: order.id,
-    order_number: order.order_number,
-    created_at: order.created_at,
-    waiter_name: order.waiter_name,
-    table: order.table,
-    items: itemsList.filter((item) => item.order_id === order.id),
-  }))
-  // Ocultar comandas donde TODOS los platos ya fueron completados
-  .filter((order) => order.items.some((it) => it.status !== 'completed'));
+      if (ordersData && ordersData.length > 0) {
+        const orderIds = ordersData.map((o) => o.id);
 
-setOrders(grouped);
-    } else {
-      setOrders([]);
+        const { data: itemsData, error: itemsError } = await supabase
+          .from('order_items')
+          .select(`
+            id,
+            order_id,
+            quantity,
+            status,
+            created_at,
+            product:products(name)
+          `)
+          .in('order_id', orderIds)
+          .order('id', { ascending: true });
+
+        if (itemsError) throw itemsError;
+
+        const itemsList = (itemsData || []) as unknown as KitchenOrderItem[];
+
+        const grouped = ordersData
+          .map((order: any) => {
+            // Normalizar mesa por si Supabase devuelve array o null
+            const tableObj = Array.isArray(order.table)
+              ? (order.table.length > 0 ? order.table[0] : null)
+              : order.table;
+
+            return {
+              id: order.id,
+              order_number: order.order_number,
+              created_at: order.created_at,
+              waiter_name: order.waiter_name,
+              table: tableObj,
+              items: itemsList.filter((item) => item.order_id === order.id),
+            };
+          })
+          // Ocultar comandas donde TODOS los platos ya fueron completados
+          .filter((order) => (order.items || []).some((it) => it.status !== 'completed'));
+
+        setOrders(grouped);
+      } else {
+        setOrders([]);
+      }
+    } catch (err) {
+      console.error('Error cargando comandas de cocina:', err);
+    } finally {
+      if (!isBackground) setLoading(false);
     }
-
-    if (!isBackground) setLoading(false);
   }
 
   useEffect(() => {
@@ -109,9 +124,11 @@ setOrders(grouped);
   }, []);
 
   const toggleItemStatus = async (item: KitchenOrderItem) => {
+    if (!item || !item.id) return;
+
     let nextStatus: 'pending' | 'ready' | 'completed' = 'pending';
 
-    if (item.status === 'pending') {
+    if (!item.status || item.status === 'pending') {
       nextStatus = 'ready';
     } else if (item.status === 'ready' || item.status === 'preparing') {
       nextStatus = 'completed';
@@ -119,22 +136,31 @@ setOrders(grouped);
       nextStatus = 'pending';
     }
 
+    // Actualización optimista protegida (no tumba React si algún ítem está en tránsito)
     setOrders((prevOrders) =>
-      prevOrders.map((order) => {
-        if (order.id !== item.order_id) return order;
+      (prevOrders || []).map((order) => {
+        if (!order || order.id !== item.order_id) return order;
         return {
           ...order,
-          items: order.items.map((it) =>
+          items: (order.items || []).map((it) =>
             it.id === item.id ? { ...it, status: nextStatus } : it
           ),
         };
       })
     );
 
-    await supabase
-      .from('order_items')
-      .update({ status: nextStatus })
-      .eq('id', item.id);
+    try {
+      const { error } = await supabase
+        .from('order_items')
+        .update({ status: nextStatus })
+        .eq('id', item.id);
+
+      if (error) {
+        console.error('Error al actualizar ítem en Supabase:', error);
+      }
+    } catch (err) {
+      console.error('Excepción al conectar con Supabase:', err);
+    }
   };
 
   return (
@@ -192,10 +218,11 @@ setOrders(grouped);
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {orders.map((order) => {
-            const minutesAgo = Math.floor(
-              (Date.now() - new Date(order.created_at).getTime()) / 60000
-            );
-            const isTakeout = !order.table;
+            const rawMinutes = order.created_at
+              ? Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000)
+              : 0;
+            const minutesAgo = isNaN(rawMinutes) ? 0 : Math.max(0, rawMinutes);
+            const isTakeout = !order.table || !order.table.table_number;
 
             return (
               <div
@@ -229,7 +256,7 @@ setOrders(grouped);
                           Mesa #{order.table?.table_number}
                         </span>
                         <h3 className={`text-base font-extrabold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          {order.table?.name}
+                          {order.table?.name || `Mesa ${order.table?.table_number}`}
                         </h3>
                       </div>
                     )}
@@ -247,7 +274,7 @@ setOrders(grouped);
 
                 {/* Filas de platos */}
                 <div className="space-y-2 flex-1">
-                  {order.items.map((item) => {
+                  {(order.items || []).map((item) => {
                     const isPending = !item.status || item.status === 'pending';
                     const isReady = item.status === 'ready' || item.status === 'preparing';
                     const isCompleted = item.status === 'completed';
@@ -256,7 +283,10 @@ setOrders(grouped);
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() => toggleItemStatus(item)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleItemStatus(item);
+                        }}
                         className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all duration-150 active:scale-[0.98] cursor-pointer ${
                           isPending
                             ? isDark
@@ -290,7 +320,7 @@ setOrders(grouped);
                               ? 'text-zinc-100'
                               : 'text-slate-900'
                           }`}>
-                            {item.product?.name}
+                            {item.product?.name || 'Producto'}
                           </span>
                         </div>
 
