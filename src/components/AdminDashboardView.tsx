@@ -273,59 +273,59 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
     : 0;
 
   // Función de Descarga del Reporte Completo en Excel/CSV
-  const handleExportReport = () => {
+const handleExportReport = () => {
     const now = new Date();
     const formattedDate = now.toLocaleDateString('es-CL');
     const formattedTime = now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
 
-    let csv = '\uFEFF'; // BOM UTF-8 para Excel y Google Sheets
+    let csv = '\uFEFF'; // BOM UTF-8
 
     // Título y Metadatos
     csv += 'REPORTE FINANCIERO, TRIBUTARIO Y AUDITORÍA CONTABLE\n';
     csv += `Sistema POS Gastronómico;Fecha de Emisión: ${formattedDate} ${formattedTime}\n\n`;
 
     // 1. Pre-cierre Tributario SII (Formulario 29)
-    csv += '=== 1. PRE-CIERRE TRIBUTARIO SII (FORMULARIO 29) ===\n';
-    csv += 'Concepto Tributario;Monto ($ CLP);Base Legal / Detalle\n';
-    csv += `Ventas Brutas Totales;$${totalGrossSales.toLocaleString('es-CL')};Total recaudado boletas y facturas (IVA Inc.)\n`;
-    csv += `Ventas Netas Totales;$${totalNetSales.toLocaleString('es-CL')};Base imponible neta sin IVA\n`;
-    csv += `IVA Débito Fiscal (19%);$${totalIvaDebit.toLocaleString('es-CL')};Impuesto al Valor Agregado F29 SII\n`;
-    csv += `Provisión PPM Obligatorio (1%);$${totalPpmProvision.toLocaleString('es-CL')};Pago Provisional Mensual SII\n`;
-    csv += `Pozo Acumulado de Propinas (10%);$${totalTipsPool.toLocaleString('es-CL')};Fondo legal a repartir al personal (Ley 20.918)\n\n`;
+    csv += '--- 1. PRE-CIERRE TRIBUTARIO SII (FORMULARIO 29) ---\n';
+    csv += 'Concepto Tributario;Monto CLP;Base Legal / Detalle\n';
+    csv += `Ventas Brutas Totales;${Math.round(totalGrossSales)};Total recaudado boletas y facturas (IVA Inc.)\n`;
+    csv += `Ventas Netas Totales;${Math.round(totalNetSales)};Base imponible neta sin IVA\n`;
+    csv += `IVA Débito Fiscal (19%);${Math.round(totalIvaDebit)};Impuesto al Valor Agregado F29 SII\n`;
+    csv += `Provisión PPM Obligatorio (1%);${Math.round(totalPpmProvision)};Pago Provisional Mensual SII\n`;
+    csv += `Pozo Acumulado de Propinas (10%);${Math.round(totalTipsPool)};Fondo legal a repartir al personal (Ley 20.918)\n\n`;
 
     // 2. Auditoría Antifraude de Turnos de Caja
-    csv += '=== 2. AUDITORÍA DE ARQUEOS DE CAJA (CONTROL ANTIFRAUDE) ===\n';
-    csv += 'Fecha / Turno;Estado;Fondo Inicial ($);Efectivo Sistema ($);Efectivo Declarado ($);Diferencia / Descuadre ($);Venta Turno ($)\n';
+    csv += '--- 2. AUDITORÍA DE ARQUEOS DE CAJA (CONTROL ANTIFRAUDE) ---\n';
+    csv += 'Fecha / Turno;Estado;Fondo Inicial CLP;Efectivo Sistema CLP;Efectivo Declarado CLP;Diferencia CLP;Venta Turno CLP\n';
     if (shifts.length === 0) {
-      csv += 'Sin turnos registrados;—;$0;$0;$0;$0;$0\n';
+      csv += 'Sin turnos registrados;—;0;0;0;0;0\n';
     } else {
       shifts.forEach((s) => {
         const opened = new Date(s.opened_at).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-        const initial = Number(s.initial_cash) || 0;
-        const expected = Number(s.expected_cash) || initial;
-        const declared = s.declared_cash !== null ? `$${Number(s.declared_cash).toLocaleString('es-CL')}` : 'Pendiente';
-        const discrepancy = s.cash_discrepancy !== null ? `$${Number(s.cash_discrepancy).toLocaleString('es-CL')}` : '$0';
-        const sales = Number(s.total_sales) || 0;
-        csv += `${opened};${s.status === 'open' ? 'En curso' : 'Cerrado'};$${initial.toLocaleString('es-CL')};$${expected.toLocaleString('es-CL')};${declared};${discrepancy};$${sales.toLocaleString('es-CL')}\n`;
+        const initial = Math.round(Number(s.initial_cash) || 0);
+        const expected = Math.round(Number(s.expected_cash) || initial);
+        const declared = s.declared_cash !== null ? Math.round(Number(s.declared_cash)) : 'Pendiente';
+        const discrepancy = s.cash_discrepancy !== null ? Math.round(Number(s.cash_discrepancy)) : 0;
+        const sales = Math.round(Number(s.total_sales) || 0);
+        csv += `${opened};${s.status === 'open' ? 'En curso' : 'Cerrado'};${initial};${expected};${declared};${discrepancy};${sales}\n`;
       });
     }
     csv += '\n';
 
     // 3. Ingeniería de Menú y Rentabilidad de Carta
-    csv += '=== 3. INGENIERÍA DE MENÚ Y RENTABILIDAD DE CARTA ===\n';
-    csv += 'Plato / Producto;Categoría;Precio Venta Bruto ($);Venta Neta ($);Costo Materia Prima ($);Food Cost %;Margen Neto Líquido ($);Margen %\n';
+    csv += '--- 3. INGENIERÍA DE MENÚ Y RENTABILIDAD DE CARTA ---\n';
+    csv += 'Plato / Producto;Categoría;Precio Venta Bruto CLP;Venta Neta CLP;Costo Materia Prima CLP;Food Cost %;Margen Neto Líquido CLP;Margen %\n';
     productsList.forEach((p) => {
       const net = Math.round(p.price / 1.19);
-      const cost = p.recipe_cost || 0;
+      const cost = Math.round(p.recipe_cost || 0);
       const fc = p.food_cost_pct || 0;
-      const marginVal = p.net_margin || 0;
+      const marginVal = Math.round(p.net_margin || 0);
       const marginPct = 100 - fc;
-      csv += `${p.name};${p.category};$${p.price.toLocaleString('es-CL')};$${net.toLocaleString('es-CL')};$${cost.toLocaleString('es-CL')};${fc}%;$${marginVal.toLocaleString('es-CL')};${marginPct}%\n`;
+      csv += `${p.name};${p.category};${p.price};${net};${cost};${fc}%;${marginVal};${marginPct}%\n`;
     });
     csv += '\n';
 
     // 4. Registro de Asistencia Laboral DT
-    csv += '=== 4. REGISTRO DE ASISTENCIA LABORAL (DIRECCIÓN DEL TRABAJO) ===\n';
+    csv += '--- 4. REGISTRO DE ASISTENCIA LABORAL (DIRECCIÓN DEL TRABAJO) ---\n';
     csv += 'Colaborador;Rol / Cargo;Tipo de Evento;Fecha & Hora\n';
     if (attendanceLogs.length === 0) {
       csv += 'Sin marcas de asistencia registradas;—;—;—\n';
@@ -341,18 +341,18 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
     csv += '\n';
 
     // 5. Inversión en Colaciones del Personal
-    csv += '=== 5. CONSUMO DE COLACIONES DEL PERSONAL ($0) ===\n';
-    csv += `Total Invertido en Beneficio: $${totalStaffMealCost.toLocaleString('es-CL')};Raciones Totales: ${totalMealPortions} un.\n`;
-    csv += 'Colaborador;Alimentos Consumidos;Fecha & Hora;Costo Absorbido ($)\n';
+    csv += '--- 5. CONSUMO DE COLACIONES DEL PERSONAL ($0) ---\n';
+    csv += `Total Invertido en Beneficio CLP;${Math.round(totalStaffMealCost)};Raciones Totales;${totalMealPortions} un.\n`;
+    csv += 'Colaborador;Alimentos Consumidos;Fecha & Hora;Costo Absorbido CLP\n';
     if (staffMeals.length === 0) {
-      csv += 'Sin consumos de colación registrados;—;—;$0\n';
+      csv += 'Sin consumos de colación registrados;—;—;0\n';
     } else {
       staffMeals.forEach((meal) => {
         const staffName = meal.staff?.name || meal.waiter_name?.replace('Colación • ', '') || 'Personal';
         const itemsSummary = meal.order_items.map((it) => `${it.quantity}x ${it.product?.name || 'Ítem'}`).join(' + ');
         const mealDate = new Date(meal.created_at).toLocaleString('es-CL');
-        const mealTotal = meal.order_items.reduce((acc, it) => acc + (it.product?.price || 0) * it.quantity, 0);
-        csv += `${staffName};"${itemsSummary}";${mealDate};$${mealTotal.toLocaleString('es-CL')}\n`;
+        const mealTotal = Math.round(meal.order_items.reduce((acc, it) => acc + (it.product?.price || 0) * it.quantity, 0));
+        csv += `${staffName};"${itemsSummary}";${mealDate};${mealTotal}\n`;
       });
     }
 
@@ -366,7 +366,7 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
     link.click();
     document.body.removeChild(link);
   };
-
+  
   return (
     <div className="space-y-6">
       {/* Barra de cabecera */}
