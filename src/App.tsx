@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Component, type ErrorInfo, type ReactNode } from 'react';
 import { supabase } from './lib/supabase';
 import { TablesView } from './components/TablesView';
 import { POSOrderModal } from './components/POSOrderModal';
@@ -13,8 +13,50 @@ import type { RestaurantTable } from './types/database';
 import { 
   UtensilsCrossed, Store, PlusCircle, 
   CreditCard, Lock, ChefHat, LayoutGrid, Boxes, TrendingUp, Printer,
-  User, Sun, Moon, ShieldCheck, Delete
+  User, Sun, Moon, ShieldCheck, Delete, RefreshCw, AlertTriangle
 } from 'lucide-react';
+
+// Atrapa-errores para evitar pantallas negras en móviles
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+interface ErrorBoundaryState {
+  hasError: boolean;
+  errorMessage: string;
+}
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, errorMessage: '' };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, errorMessage: error?.message || 'Error inesperado' };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Error capturado en KDS/POS:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 text-center space-y-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 text-rose-300 m-4">
+          <AlertTriangle className="w-10 h-10 mx-auto text-rose-400 animate-bounce" />
+          <h3 className="font-bold text-sm">Ocurrió un detalle al actualizar la comanda</h3>
+          <p className="text-xs font-mono text-zinc-400">{this.state.errorMessage}</p>
+          <button
+            onClick={() => this.setState({ hasError: false, errorMessage: '' })}
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+          >
+            Continuar Servicio
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 interface ActiveOrderSummary {
   id: string;
@@ -30,7 +72,11 @@ const CURRENT_SHIFT_ID = '11111111-2222-3333-4444-555555555555';
 const MASTER_PIN = '8068';
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // Persistencia de sesión en el teléfono para evitar pedir PIN a cada rato
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('pos_authenticated') === 'true';
+  });
+
   const [enteredPin, setEnteredPin] = useState('');
   const [pinError, setPinError] = useState(false);
 
@@ -48,12 +94,20 @@ export default function App() {
   const [printingOrder, setPrintingOrder] = useState<{ id: string; isPrecuenta: boolean } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const [activeStaff, setActiveStaff] = useState<StaffMember>({
-    id: 'default',
-    name: 'Carlos Muñoz',
-    role: 'waiter',
-    pin_code: '1234',
+  // Recordar colaborador en el dispositivo
+  const [activeStaff, setActiveStaff] = useState<StaffMember>(() => {
+    const savedStaff = localStorage.getItem('pos_active_staff');
+    if (savedStaff) {
+      try { return JSON.parse(savedStaff); } catch (e) { /* fallback */ }
+    }
+    return {
+      id: 'default',
+      name: 'Carlos Muñoz',
+      role: 'waiter',
+      pin_code: '1234',
+    };
   });
+
   const [isStaffPortalOpen, setIsStaffPortalOpen] = useState(false);
 
   const isDark = theme === 'dark';
@@ -63,11 +117,12 @@ export default function App() {
       const { data } = await supabase
         .from('staff')
         .select('id, name, role, pin_code')
-        .eq('pin_code', '1234')
+        .eq('pin_code', activeStaff.pin_code || '1234')
         .maybeSingle();
 
       if (data) {
         setActiveStaff(data as StaffMember);
+        localStorage.setItem('pos_active_staff', JSON.stringify(data));
       }
     }
     loadDefaultStaff();
@@ -127,6 +182,7 @@ export default function App() {
     setRefreshKey((k) => k + 1);
   };
 
+  // Desbloqueo rápido: Acepta tanto el PIN Maestro como el PIN del Garzón
   const handleNumClick = (num: string) => {
     if (enteredPin.length < 4) {
       const nextPin = enteredPin + num;
@@ -134,8 +190,9 @@ export default function App() {
       setPinError(false);
 
       if (nextPin.length === 4) {
-        if (nextPin === MASTER_PIN) {
+        if (nextPin === MASTER_PIN || nextPin === activeStaff.pin_code) {
           setIsAuthenticated(true);
+          localStorage.setItem('pos_authenticated', 'true');
         } else {
           setPinError(true);
           setTimeout(() => {
@@ -152,6 +209,12 @@ export default function App() {
     setPinError(false);
   };
 
+  const handleLock = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('pos_authenticated');
+    setEnteredPin('');
+  };
+
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen w-full bg-[#0b0f17] text-slate-100 flex items-center justify-center p-4">
@@ -161,8 +224,10 @@ export default function App() {
           </div>
 
           <div className="text-center space-y-1">
-            <h2 className="text-lg font-black tracking-tight">Acceso Protegido</h2>
-            <p className="text-xs text-slate-400 font-mono">Ingresa el PIN maestro para desbloquear</p>
+            <h2 className="text-lg font-black tracking-tight">Acceso Rápido POS</h2>
+            <p className="text-xs text-slate-400 font-mono">
+              PIN Maestro o PIN de <strong className="text-sky-400">{activeStaff.name}</strong>
+            </p>
           </div>
 
           <div className="flex gap-3 my-2">
@@ -212,8 +277,10 @@ export default function App() {
             <button
               type="button"
               onClick={() => {
-                if (enteredPin === MASTER_PIN) setIsAuthenticated(true);
-                else {
+                if (enteredPin === MASTER_PIN || enteredPin === activeStaff.pin_code) {
+                  setIsAuthenticated(true);
+                  localStorage.setItem('pos_authenticated', 'true');
+                } else {
                   setPinError(true);
                   setTimeout(() => { setEnteredPin(''); setPinError(false); }, 800);
                 }
@@ -225,7 +292,7 @@ export default function App() {
           </div>
 
           <span className="text-[10px] font-mono text-slate-500">
-            Terminal POS Protegido • Supabase Cloud
+            Terminal POS Protegido • Dispositivo Vinculado
           </span>
         </div>
       </main>
@@ -274,7 +341,7 @@ export default function App() {
                 {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
               <button
-                onClick={() => setIsAuthenticated(false)}
+                onClick={handleLock}
                 className="px-2.5 py-1.5 bg-rose-500/10 text-rose-600 border border-rose-500/20 rounded-xl text-xs font-bold cursor-pointer"
               >
                 Bloquear
@@ -372,7 +439,7 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setIsAuthenticated(false)}
+              onClick={handleLock}
               className="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-500/30 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
               title="Bloquear sistema"
             >
@@ -381,187 +448,190 @@ export default function App() {
           </div>
         </header>
 
-        {/* Vista Salón */}
-        {currentView === 'salon' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-            <div
-              className={`lg:col-span-2 p-5 rounded-2xl border transition-colors shadow-xs ${
-                isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'
-              }`}
-            >
-              <TablesView
-                key={refreshKey}
-                isDark={isDark}
-                onSelectTable={(table) => handleTableClick(table)}
-                onNewTakeoutOrder={() => setIsTakeoutOrdering(true)}
-                onSelectTakeoutOrder={(order) => handleSelectTakeoutOrder(order)}
-              />
-            </div>
+        {/* Vista protegida con ErrorBoundary para evitar pantallas negras en móviles */}
+        <ErrorBoundary>
+          {/* Vista Salón */}
+          {currentView === 'salon' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+              <div
+                className={`lg:col-span-2 p-5 rounded-2xl border transition-colors shadow-xs ${
+                  isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'
+                }`}
+              >
+                <TablesView
+                  key={refreshKey}
+                  isDark={isDark}
+                  onSelectTable={(table) => handleTableClick(table)}
+                  onNewTakeoutOrder={() => setIsTakeoutOrdering(true)}
+                  onSelectTakeoutOrder={(order) => handleSelectTakeoutOrder(order)}
+                />
+              </div>
 
-            {/* Panel Lateral */}
-            <div
-              className={`lg:col-span-1 p-5 rounded-2xl border transition-colors shadow-xs flex flex-col justify-between min-h-[440px] sticky top-4 ${
-                isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
-              }`}
-            >
-              {selectedTable || selectedTakeout ? (
-                <div className="space-y-4">
-                  <div className={`border-b pb-3 ${isDark ? 'border-zinc-800' : 'border-slate-100'}`}>
-                    <span className={`text-[10px] font-mono uppercase tracking-wider font-bold px-2 py-0.5 rounded-md border ${
-                      selectedTable
-                        ? isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-blue-50 border-blue-200 text-blue-700'
-                        : isDark ? 'bg-violet-950/60 border-violet-700 text-violet-300' : 'bg-violet-50 border-violet-200 text-violet-700'
-                    }`}>
-                      {selectedTable ? 'Mesa Seleccionada' : 'Pedido Para Llevar'}
-                    </span>
-                    <h3 className={`text-xl font-black mt-1.5 truncate ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
-                      {selectedTable ? selectedTable.name : (selectedTakeout?.waiter_name?.replace('Para Llevar • ', '') || 'Para Llevar')}
-                    </h3>
-                    <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600 font-medium'}`}>
-                      {selectedTable ? `Capacidad: ${selectedTable.capacity} personas` : 'Retiro en mostrador'}
-                    </p>
-                  </div>
-
-                  <div
-                    className={`p-4 rounded-xl border space-y-2.5 transition-colors ${
-                      isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50 border-slate-200'
-                    }`}
-                  >
-                    <div className="flex justify-between text-xs items-center">
-                      <span className={`font-semibold ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>Estado:</span>
-                      <span
-                        className={`font-mono text-xs font-bold capitalize px-2.5 py-0.5 rounded-full border shadow-2xs ${
-                          selectedTable
-                            ? selectedTable.status === 'occupied'
-                              ? 'text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/20'
-                              : 'text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-500/10 border-emerald-300 dark:border-emerald-500/20'
-                            : 'text-violet-800 dark:text-violet-300 bg-violet-100 dark:bg-violet-500/10 border-violet-300 dark:border-violet-500/20'
-                        }`}
-                      >
-                        {selectedTable ? (selectedTable.status === 'occupied' ? 'Ocupada' : 'Disponible') : 'Por Entregar'}
+              {/* Panel Lateral */}
+              <div
+                className={`lg:col-span-1 p-5 rounded-2xl border transition-colors shadow-xs flex flex-col justify-between min-h-[440px] sticky top-4 ${
+                  isDark ? 'bg-zinc-900/90 border-zinc-800' : 'bg-white border-slate-200'
+                }`}
+              >
+                {selectedTable || selectedTakeout ? (
+                  <div className="space-y-4">
+                    <div className={`border-b pb-3 ${isDark ? 'border-zinc-800' : 'border-slate-100'}`}>
+                      <span className={`text-[10px] font-mono uppercase tracking-wider font-bold px-2 py-0.5 rounded-md border ${
+                        selectedTable
+                          ? isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-blue-50 border-blue-200 text-blue-700'
+                          : isDark ? 'bg-violet-950/60 border-violet-700 text-violet-300' : 'bg-violet-50 border-violet-200 text-violet-700'
+                      }`}>
+                        {selectedTable ? 'Mesa Seleccionada' : 'Pedido Para Llevar'}
                       </span>
+                      <h3 className={`text-xl font-black mt-1.5 truncate ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                        {selectedTable ? selectedTable.name : (selectedTakeout?.waiter_name?.replace('Para Llevar • ', '') || 'Para Llevar')}
+                      </h3>
+                      <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600 font-medium'}`}>
+                        {selectedTable ? `Capacidad: ${selectedTable.capacity} personas` : 'Retiro en mostrador'}
+                      </p>
                     </div>
 
-                    {activeOrder && (
-                      <div
-                        className={`space-y-1.5 pt-2 border-t font-mono text-xs ${
-                          isDark ? 'border-zinc-800 text-zinc-300' : 'border-slate-200/80 text-slate-700'
-                        }`}
-                      >
-                        <div className="flex justify-between">
-                          <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>Comanda:</span>
-                          <span className={`font-bold ${isDark ? 'text-zinc-200' : 'text-slate-900'}`}>
-                            #{activeOrder.order_number}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>Consumo Neto:</span>
-                          <span className={isDark ? 'text-zinc-300' : 'text-slate-800 font-semibold'}>
-                            ${activeOrder.subtotal_net.toLocaleString('es-CL')}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>IVA (19%):</span>
-                          <span className={isDark ? 'text-zinc-300' : 'text-slate-800 font-semibold'}>
-                            ${activeOrder.iva_amount.toLocaleString('es-CL')}
-                          </span>
-                        </div>
-                        <div className={`flex justify-between font-bold ${
-                          isDark ? 'text-amber-400' : 'text-amber-800'
-                        }`}>
-                          <span>Propina:</span>
-                          <span>${activeOrder.tip_amount.toLocaleString('es-CL')}</span>
-                        </div>
-                        <div
-                          className={`flex justify-between text-base font-black pt-2 border-t ${
-                            isDark ? 'border-zinc-800 text-zinc-100' : 'border-slate-200 text-slate-900'
+                    <div
+                      className={`p-4 rounded-xl border space-y-2.5 transition-colors ${
+                        isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className="flex justify-between text-xs items-center">
+                        <span className={`font-semibold ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>Estado:</span>
+                        <span
+                          className={`font-mono text-xs font-bold capitalize px-2.5 py-0.5 rounded-full border shadow-2xs ${
+                            selectedTable
+                              ? selectedTable.status === 'occupied'
+                                ? 'text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/20'
+                                : 'text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-500/10 border-emerald-300 dark:border-emerald-500/20'
+                              : 'text-violet-800 dark:text-violet-300 bg-violet-100 dark:bg-violet-500/10 border-violet-300 dark:border-violet-500/20'
                           }`}
                         >
-                          <span>Total:</span>
-                          <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
-                            ${activeOrder.total_amount.toLocaleString('es-CL')}
-                          </span>
-                        </div>
+                          {selectedTable ? (selectedTable.status === 'occupied' ? 'Ocupada' : 'Disponible') : 'Por Entregar'}
+                        </span>
                       </div>
+
+                      {activeOrder && (
+                        <div
+                          className={`space-y-1.5 pt-2 border-t font-mono text-xs ${
+                            isDark ? 'border-zinc-800 text-zinc-300' : 'border-slate-200/80 text-slate-700'
+                          }`}
+                        >
+                          <div className="flex justify-between">
+                            <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>Comanda:</span>
+                            <span className={`font-bold ${isDark ? 'text-zinc-200' : 'text-slate-900'}`}>
+                              #{activeOrder.order_number}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>Consumo Neto:</span>
+                            <span className={isDark ? 'text-zinc-300' : 'text-slate-800 font-semibold'}>
+                              ${activeOrder.subtotal_net.toLocaleString('es-CL')}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>IVA (19%):</span>
+                            <span className={isDark ? 'text-zinc-300' : 'text-slate-800 font-semibold'}>
+                              ${activeOrder.iva_amount.toLocaleString('es-CL')}
+                            </span>
+                          </div>
+                          <div className={`flex justify-between font-bold ${
+                            isDark ? 'text-amber-400' : 'text-amber-800'
+                          }`}>
+                            <span>Propina:</span>
+                            <span>${activeOrder.tip_amount.toLocaleString('es-CL')}</span>
+                          </div>
+                          <div
+                            className={`flex justify-between text-base font-black pt-2 border-t ${
+                              isDark ? 'border-zinc-800 text-zinc-100' : 'border-slate-200 text-slate-900'
+                            }`}
+                          >
+                            <span>Total:</span>
+                            <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
+                              ${activeOrder.total_amount.toLocaleString('es-CL')}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {activeOrder ? (
+                      <div className="space-y-2 pt-1">
+                        <button
+                          onClick={() => setIsPaying(true)}
+                          className={`w-full py-3 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md cursor-pointer ${
+                            selectedTakeout 
+                              ? 'bg-violet-600 hover:bg-violet-500 shadow-violet-600/20' 
+                              : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'
+                          }`}
+                        >
+                          <CreditCard className="w-4 h-4" /> Cobrar (${activeOrder.total_amount.toLocaleString('es-CL')})
+                        </button>
+
+                        <button
+                          onClick={() => setPrintingOrder({ id: activeOrder.id, isPrecuenta: true })}
+                          className={`w-full py-2.5 font-bold rounded-xl text-xs flex items-center justify-center gap-2 border transition-all active:scale-95 cursor-pointer ${
+                            isDark
+                              ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border-zinc-700'
+                              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-xs'
+                          }`}
+                        >
+                          <Printer className="w-4 h-4 text-slate-500" /> Imprimir Comanda / Ticket
+                        </button>
+                      </div>
+                    ) : (
+                      selectedTable && (
+                        <button
+                          onClick={() => setIsOrdering(true)}
+                          className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md shadow-blue-600/20 cursor-pointer"
+                        >
+                          <PlusCircle className="w-4 h-4" /> Tomar Pedido ({activeStaff.name.split(' ')[0]})
+                        </button>
+                      )
                     )}
                   </div>
-
-                  {activeOrder ? (
-                    <div className="space-y-2 pt-1">
-                      <button
-                        onClick={() => setIsPaying(true)}
-                        className={`w-full py-3 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md cursor-pointer ${
-                          selectedTakeout 
-                            ? 'bg-violet-600 hover:bg-violet-500 shadow-violet-600/20' 
-                            : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'
-                        }`}
-                      >
-                        <CreditCard className="w-4 h-4" /> Cobrar (${activeOrder.total_amount.toLocaleString('es-CL')})
-                      </button>
-
-                      <button
-                        onClick={() => setPrintingOrder({ id: activeOrder.id, isPrecuenta: true })}
-                        className={`w-full py-2.5 font-bold rounded-xl text-xs flex items-center justify-center gap-2 border transition-all active:scale-95 cursor-pointer ${
-                          isDark
-                            ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border-zinc-700'
-                            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-xs'
-                        }`}
-                      >
-                        <Printer className="w-4 h-4 text-slate-500" /> Imprimir Comanda / Ticket
-                      </button>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-3">
+                    <div
+                      className={`p-4 rounded-2xl border transition-colors ${
+                        isDark ? 'bg-zinc-800/50 border-zinc-700 text-zinc-500' : 'bg-slate-100 border-slate-200 text-slate-400'
+                      }`}
+                    >
+                      <UtensilsCrossed className="w-7 h-7" />
                     </div>
-                  ) : (
-                    selectedTable && (
-                      <button
-                        onClick={() => setIsOrdering(true)}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md shadow-blue-600/20 cursor-pointer"
-                      >
-                        <PlusCircle className="w-4 h-4" /> Tomar Pedido ({activeStaff.name.split(' ')[0]})
-                      </button>
-                    )
-                  )}
-                </div>
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-3">
-                  <div
-                    className={`p-4 rounded-2xl border transition-colors ${
-                      isDark ? 'bg-zinc-800/50 border-zinc-700 text-zinc-500' : 'bg-slate-100 border-slate-200 text-slate-400'
-                    }`}
-                  >
-                    <UtensilsCrossed className="w-7 h-7" />
+                    <p className={`text-xs max-w-[200px] font-medium ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
+                      Toca una mesa o un pedido para llevar para operar.
+                    </p>
                   </div>
-                  <p className={`text-xs max-w-[200px] font-medium ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
-                    Toca una mesa o un pedido para llevar para operar.
-                  </p>
-                </div>
-              )}
+                )}
 
-              <div className={`pt-4 border-t ${isDark ? 'border-zinc-800' : 'border-slate-100'}`}>
-                <span className={`text-[10px] font-mono block text-center ${isDark ? 'text-zinc-500' : 'text-slate-400 font-medium'}`}>
-                  Terminal Táctil • Mi Negocio POS
-                </span>
+                <div className={`pt-4 border-t ${isDark ? 'border-zinc-800' : 'border-slate-100'}`}>
+                  <span className={`text-[10px] font-mono block text-center ${isDark ? 'text-zinc-500' : 'text-slate-400 font-medium'}`}>
+                    Terminal Táctil • Mi Negocio POS
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {currentView === 'kitchen' && (
-          <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
-            <KitchenView isDark={isDark} />
-          </div>
-        )}
+          {currentView === 'kitchen' && (
+            <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
+              <KitchenView isDark={isDark} />
+            </div>
+          )}
 
-        {currentView === 'inventory' && (
-          <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
-            <InventoryView isDark={isDark} />
-          </div>
-        )}
+          {currentView === 'inventory' && (
+            <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
+              <InventoryView isDark={isDark} />
+            </div>
+          )}
 
-        {currentView === 'admin' && (
-          <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
-            <AdminDashboardView isDark={isDark} />
-          </div>
-        )}
+          {currentView === 'admin' && (
+            <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
+              <AdminDashboardView isDark={isDark} />
+            </div>
+          )}
+        </ErrorBoundary>
       </div>
 
       {/* Modal Portal de Personal (Asistencia y Colaciones) */}
@@ -570,6 +640,7 @@ export default function App() {
           currentStaff={activeStaff}
           onSelectStaff={(staff) => {
             setActiveStaff(staff);
+            localStorage.setItem('pos_active_staff', JSON.stringify(staff));
             setIsStaffPortalOpen(false);
           }}
           onClose={() => setIsStaffPortalOpen(false)}
