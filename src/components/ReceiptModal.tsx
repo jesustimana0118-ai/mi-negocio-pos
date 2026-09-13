@@ -87,8 +87,82 @@ export function ReceiptModal({
     }
   }, [orderId]);
 
+  // Impresión térmica aislada: elimina hojas fantasmas y garantiza 1 sola página
   const handlePrint = () => {
-    window.print();
+    const receiptEl = document.getElementById('thermal-receipt');
+    if (!receiptEl) {
+      window.print();
+      return;
+    }
+
+    // Clonar estilos activos (Tailwind)
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map((el) => el.outerHTML)
+      .join('\n');
+
+    // Crear iframe invisible temporal
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Ticket #${order?.order_number || ''}</title>
+          ${styles}
+          <style>
+            @page {
+              size: ${paperWidth === '80mm' ? '80mm' : '58mm'} auto;
+              margin: 0mm !important;
+            }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              color: #000000 !important;
+              width: 100% !important;
+              height: auto !important;
+            }
+            .thermal-print-wrapper {
+              width: ${paperWidth === '80mm' ? '74mm' : '48mm'} !important;
+              margin: 0 auto !important;
+              padding: 2mm 1mm !important;
+              box-sizing: border-box !important;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="thermal-print-wrapper">
+            ${receiptEl.innerHTML}
+          </div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 1500);
+    }, 250);
   };
 
   const isTakeout = tableNumber === 0 || tableName.toLowerCase().includes('para llevar');
@@ -96,53 +170,11 @@ export function ReceiptModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      {/* Reglas CSS de Impresión Térmica Directa para 1 Sola Hoja */}
-      <style>{`
-        @media print {
-          html, body {
-            height: max-content !important;
-            overflow: hidden !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          body * {
-            visibility: hidden;
-          }
-          .thermal-print-area, .thermal-print-area * {
-            visibility: visible;
-          }
-          .thermal-print-area {
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: ${paperWidth === '80mm' ? '72mm' : '48mm'} !important;
-            margin: 0 !important;
-            padding: 2mm 3mm !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-            box-shadow: none !important;
-            border: none !important;
-            border-radius: 0 !important;
-            page-break-after: avoid !important;
-            page-break-inside: avoid !important;
-            break-after: avoid !important;
-            break-inside: avoid !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-          @page {
-            size: auto;
-            margin: 0mm !important;
-          }
-        }
-      `}</style>
-
       <div className={`w-full max-w-lg rounded-3xl p-5 shadow-2xl space-y-4 max-h-[94vh] flex flex-col border transition-all ${
         isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
       }`}>
         {/* Cabecera y Controles en Pantalla */}
-        <div className="no-print flex items-center justify-between border-b pb-3 border-zinc-800">
+        <div className="flex items-center justify-between border-b pb-3 border-zinc-800">
           <div className="flex items-center gap-2">
             <span className="p-1.5 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20">
               <Printer className="w-4 h-4" />
@@ -210,7 +242,7 @@ export function ReceiptModal({
           ) : (
             <div
               id="thermal-receipt"
-              className={`thermal-print-area bg-white text-black font-mono shadow-xl rounded-md p-4 transition-all ${
+              className={`bg-white text-black font-mono shadow-xl rounded-md p-4 transition-all ${
                 paperWidth === '80mm' ? 'w-[320px] text-xs' : 'w-[250px] text-[11px]'
               }`}
               style={{ fontFamily: "'Courier New', Courier, monospace" }}
@@ -326,7 +358,7 @@ export function ReceiptModal({
         </div>
 
         {/* Botones de Acción */}
-        <div className="no-print flex items-center gap-2 pt-1">
+        <div className="flex items-center gap-2 pt-1">
           <button
             type="button"
             onClick={onClose}
