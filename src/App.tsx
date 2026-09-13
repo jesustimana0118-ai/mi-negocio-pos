@@ -13,7 +13,7 @@ import type { RestaurantTable } from './types/database';
 import { 
   UtensilsCrossed, Store, PlusCircle, 
   CreditCard, Lock, ChefHat, LayoutGrid, Boxes, TrendingUp, Printer,
-  User, Sun, Moon, ShieldCheck, Delete, RefreshCw, AlertTriangle
+  User, Sun, Moon, ShieldCheck, Delete, AlertTriangle
 } from 'lucide-react';
 
 // Atrapa-errores para evitar pantallas negras en móviles
