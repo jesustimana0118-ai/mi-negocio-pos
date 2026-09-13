@@ -3,13 +3,14 @@ import { supabase } from '../lib/supabase';
 import { RecipeModal } from './RecipeModal';
 import { ProductFormModal } from './ProductFormModal';
 import { StaffAttendanceAudit } from './StaffAttendanceAudit';
+import { StaffManagementView } from './StaffManagementView';
 import { 
   TrendingUp, DollarSign, Receipt, Percent, 
   AlertOctagon, CheckCircle2, History,
   Flame, RefreshCw, BarChart3, Users, Utensils, 
   Plus, Edit3, Layers, Tag, Trash2, UserCheck, 
   Clock, LogOut, Coffee, ShieldCheck, Calculator, ArrowUpRight,
-  FileSpreadsheet, FileText, Camera
+  FileSpreadsheet, FileText, Camera, Shield
 } from 'lucide-react';
 
 interface ShiftAudit {
@@ -80,7 +81,7 @@ interface AdminDashboardViewProps {
 }
 
 export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
-  const [adminTab, setAdminTab] = useState<'metrics' | 'menu' | 'staff' | 'attendance'>('metrics');
+  const [adminTab, setAdminTab] = useState<'metrics' | 'menu' | 'staff' | 'attendance' | 'team'>('metrics');
   const [shifts, setShifts] = useState<ShiftAudit[]>([]);
   const [topProducts, setTopProducts] = useState<ProductSaleMetric[]>([]);
   const [productsList, setProductsList] = useState<ProductItem[]>([]);
@@ -279,13 +280,11 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
     const formattedDate = now.toLocaleDateString('es-CL');
     const formattedTime = now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
 
-    let csv = '\uFEFF'; // BOM UTF-8
+    let csv = '\uFEFF';
 
-    // Título y Metadatos
     csv += 'REPORTE FINANCIERO, TRIBUTARIO Y AUDITORÍA CONTABLE\n';
     csv += `Sistema POS Gastronómico;Fecha de Emisión: ${formattedDate} ${formattedTime}\n\n`;
 
-    // 1. Pre-cierre Tributario SII (Formulario 29)
     csv += '--- 1. PRE-CIERRE TRIBUTARIO SII (FORMULARIO 29) ---\n';
     csv += 'Concepto Tributario;Monto CLP;Base Legal / Detalle\n';
     csv += `Ventas Brutas Totales;${Math.round(totalGrossSales)};Total recaudado boletas y facturas (IVA Inc.)\n`;
@@ -294,7 +293,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
     csv += `Provisión PPM Obligatorio (1%);${Math.round(totalPpmProvision)};Pago Provisional Mensual SII\n`;
     csv += `Pozo Acumulado de Propinas (10%);${Math.round(totalTipsPool)};Fondo legal a repartir al personal (Ley 20.918)\n\n`;
 
-    // 2. Auditoría Antifraude de Turnos de Caja
     csv += '--- 2. AUDITORÍA DE ARQUEOS DE CAJA (CONTROL ANTIFRAUDE) ---\n';
     csv += 'Fecha / Turno;Estado;Fondo Inicial CLP;Efectivo Sistema CLP;Efectivo Declarado CLP;Diferencia CLP;Venta Turno CLP\n';
     if (shifts.length === 0) {
@@ -312,7 +310,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
     }
     csv += '\n';
 
-    // 3. Ingeniería de Menú y Rentabilidad de Carta
     csv += '--- 3. INGENIERÍA DE MENÚ Y RENTABILIDAD DE CARTA ---\n';
     csv += 'Plato / Producto;Categoría;Precio Venta Bruto CLP;Venta Neta CLP;Costo Materia Prima CLP;Food Cost %;Margen Neto Líquido CLP;Margen %\n';
     productsList.forEach((p) => {
@@ -325,7 +322,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
     });
     csv += '\n';
 
-    // 4. Registro de Asistencia Laboral DT
     csv += '--- 4. REGISTRO DE ASISTENCIA LABORAL (DIRECCIÓN DEL TRABAJO) ---\n';
     csv += 'Colaborador;Rol / Cargo;Tipo de Evento;Fecha & Hora\n';
     if (attendanceLogs.length === 0) {
@@ -341,7 +337,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
     }
     csv += '\n';
 
-    // 5. Inversión en Colaciones del Personal
     csv += '--- 5. CONSUMO DE COLACIONES DEL PERSONAL ($0) ---\n';
     csv += `Total Invertido en Beneficio CLP;${Math.round(totalStaffMealCost)};Raciones Totales;${totalMealPortions} un.\n`;
     csv += 'Colaborador;Alimentos Consumidos;Fecha & Hora;Costo Absorbido CLP\n';
@@ -357,7 +352,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
       });
     }
 
-    // Disparar descarga en el navegador
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -368,7 +362,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
     document.body.removeChild(link);
   };
 
-  // Función para abrir la vista ejecutiva de impresión / PDF con gráficos SVG
   const handlePrintPDFReport = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -599,6 +592,20 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
             >
               Métricas & Finanzas
             </button>
+
+            {/* PESTAÑA: Gestión de Personal, Roles y PINs */}
+            <button
+              onClick={() => setAdminTab('team')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                adminTab === 'team'
+                  ? 'bg-violet-600 text-white shadow-xs'
+                  : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5 text-blue-400" />
+              <span>Equipo & Roles</span>
+            </button>
+
             <button
               onClick={() => setAdminTab('staff')}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer shrink-0 ${
@@ -609,7 +616,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
             >
               Personal & RRHH
             </button>
-            {/* NUEVA PESTAÑA: Auditoría y Libro de Asistencia DT */}
             <button
               onClick={() => setAdminTab('attendance')}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
@@ -648,6 +654,11 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
           </button>
         </div>
       </div>
+
+      {/* Pestaña: Gestión de Equipo, Roles y PINs */}
+      {adminTab === 'team' && (
+        <StaffManagementView isDark={isDark} />
+      )}
 
       {/* Pestaña 1: Finanzas e Impuestos */}
       {adminTab === 'metrics' && (
@@ -1115,7 +1126,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
       {/* Pestaña 3: Carta, Recetas & Food Cost % */}
       {adminTab === 'menu' && (
         <div className="space-y-5">
-          {/* Tarjetas KPI de Ingeniería de Menú */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className={`p-4 rounded-2xl border transition-all ${
               isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
@@ -1223,7 +1233,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
 
                     return (
                       <tr key={prod.id} className={`transition-colors ${isDark ? 'hover:bg-zinc-800/30' : 'hover:bg-slate-50/80'}`}>
-                        {/* Plato */}
                         <td className="p-3.5 font-sans">
                           <span className={`font-bold block text-xs ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
                             {prod.name}
@@ -1235,7 +1244,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
                           </span>
                         </td>
 
-                        {/* Precio Venta */}
                         <td className="p-3.5 text-right font-black text-slate-900 dark:text-zinc-100 tabular-nums text-sm">
                           ${prod.price.toLocaleString('es-CL')}
                           <span className="block text-[10px] font-normal text-slate-400 font-mono">
@@ -1243,7 +1251,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
                           </span>
                         </td>
 
-                        {/* Costo Insumos */}
                         <td className="p-3.5 text-right tabular-nums">
                           {hasRecipe ? (
                             <div>
@@ -1261,7 +1268,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
                           )}
                         </td>
 
-                        {/* Food Cost % */}
                         <td className="p-3.5 text-center">
                           {hasRecipe && cost > 0 ? (
                             <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black border tabular-nums ${
@@ -1285,7 +1291,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
                           )}
                         </td>
 
-                        {/* Margen Neto Líquido */}
                         <td className="p-3.5 text-right tabular-nums">
                           {hasRecipe && cost > 0 ? (
                             <div>
@@ -1301,7 +1306,6 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
                           )}
                         </td>
 
-                        {/* Acciones */}
                         <td className="p-3.5 text-right">
                           <div className="inline-flex items-center gap-1.5">
                             <button
