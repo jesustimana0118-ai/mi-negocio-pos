@@ -98,7 +98,7 @@ export default function App() {
   const [activeStaff, setActiveStaff] = useState<StaffMember>(() => {
     const savedStaff = localStorage.getItem('pos_active_staff');
     if (savedStaff) {
-      try { return JSON.parse(savedStaff); } catch (e) { /* fallback */ }
+      try { return JSON.parse(savedStaff); } catch { /* fallback */ }
     }
     return {
       id: 'default',
@@ -331,7 +331,26 @@ export default function App() {
               </div>
             </div>
 
+            {/* Controles en móvil: Portal, Tema y Bloquear */}
             <div className="flex lg:hidden items-center gap-2">
+              <button
+                onClick={() => setIsStaffPortalOpen(true)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all active:scale-95 cursor-pointer ${
+                  isDark
+                    ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border-zinc-700'
+                    : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200 shadow-xs'
+                }`}
+                title="Portal de Personal"
+              >
+                <User className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="max-w-[70px] truncate">{activeStaff.name.split(' ')[0]}</span>
+                <span className={`text-[9px] font-mono px-1 py-0.2 rounded border ${
+                  isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-slate-100 border-slate-300 text-slate-700'
+                }`}>
+                  PORTAL
+                </span>
+              </button>
+
               <button
                 onClick={() => setTheme(isDark ? 'light' : 'dark')}
                 className={`p-2 rounded-xl border cursor-pointer ${
@@ -340,6 +359,7 @@ export default function App() {
               >
                 {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
+
               <button
                 onClick={handleLock}
                 className="px-2.5 py-1.5 bg-rose-500/10 text-rose-600 border border-rose-500/20 rounded-xl text-xs font-bold cursor-pointer"
