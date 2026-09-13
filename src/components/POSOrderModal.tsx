@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Product, RestaurantTable } from '../types/database';
-import { X, Plus, Minus, Send, Coffee, ShoppingBag, User } from 'lucide-react';
+import { X, Plus, Minus, Send, Coffee, ShoppingBag, User, Check } from 'lucide-react';
 
 interface CartItem {
   product: Product;
@@ -78,9 +78,21 @@ export function POSOrderModal({
     );
   };
 
-  const totalWithIva = cart.reduce((acc, it) => acc + it.product.price * it.quantity, 0);
+  // Limpieza y cálculo numérico a prueba de fallos
+  const cleanPrice = (price: any): number => {
+    if (typeof price === 'number') return price;
+    if (!price) return 0;
+    const cleaned = String(price).replace(/[^0-9]/g, '');
+    return Number(cleaned) || 0;
+  };
+
+  const totalWithIva = cart.reduce(
+    (acc, it) => acc + cleanPrice(it.product?.price) * (Number(it.quantity) || 1),
+    0
+  );
   const subtotal_net = Math.round(totalWithIva / 1.19);
   const iva_amount = totalWithIva - subtotal_net;
+  const totalItemsCount = cart.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
 
   const handleConfirmOrder = async () => {
     if (cart.length === 0 || submitting) return;
@@ -122,8 +134,8 @@ export function POSOrderModal({
         order_id: orderData.id,
         product_id: it.product.id,
         quantity: it.quantity,
-        unit_price: it.product.price,
-        subtotal: it.product.price * it.quantity,
+        unit_price: cleanPrice(it.product.price),
+        subtotal: cleanPrice(it.product.price) * it.quantity,
         status: 'pending',
       }));
 
@@ -147,8 +159,9 @@ export function POSOrderModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-3">
-      <div className="bg-zinc-900 border border-zinc-800 w-full max-w-4xl h-[90vh] rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      {/* Contenedor adaptativo: con scroll en móviles y layout fijo en desktop */}
+      <div className="bg-zinc-900 border border-zinc-800 w-full max-w-4xl max-h-[92dvh] md:h-[90vh] rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-y-auto md:overflow-hidden my-auto">
         
         {/* Catálogo de Productos */}
         <div className="flex-1 flex flex-col border-b md:border-b-0 md:border-r border-zinc-800 p-4">
@@ -199,7 +212,7 @@ export function POSOrderModal({
           )}
 
           {/* Categorías */}
-          <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3">
+          <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 shrink-0">
             {categories.map((cat) => (
               <button
                 key={cat}
@@ -216,48 +229,69 @@ export function POSOrderModal({
             ))}
           </div>
 
-          {/* Grid de Productos */}
-          <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-2.5 pr-1">
+          {/* Grid de Productos con Insignia Activa */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pr-1 md:flex-1 md:overflow-y-auto max-h-[42vh] md:max-h-none overflow-y-auto">
             {loading ? (
               <div className="col-span-full py-16 text-center text-xs font-mono text-zinc-500 animate-pulse">
                 Cargando carta...
               </div>
             ) : (
-              filteredProducts.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => addToCart(p)}
-                  className="p-3 bg-zinc-950/60 hover:bg-zinc-800/80 border border-zinc-800 rounded-xl text-left flex flex-col justify-between transition-all active:scale-95 group cursor-pointer"
-                >
-                  <span className="text-xs font-semibold text-zinc-200 line-clamp-2">{p.name}</span>
-                  <div className="mt-3 flex justify-between items-center w-full">
-                    <span className="text-xs font-bold font-mono text-emerald-400 tabular-nums">
-                      ${p.price.toLocaleString('es-CL')}
-                    </span>
-                    <span className="p-1 rounded-lg bg-zinc-800 group-hover:bg-emerald-500 group-hover:text-zinc-950 transition-colors">
-                      <Plus className="w-3.5 h-3.5" />
-                    </span>
-                  </div>
-                </button>
-              ))
+              filteredProducts.map((p) => {
+                const itemInCart = cart.find((it) => it.product.id === p.id);
+                const qty = itemInCart?.quantity || 0;
+                const isSelected = qty > 0;
+
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => addToCart(p)}
+                    className={`p-3 rounded-xl text-left flex flex-col justify-between transition-all active:scale-95 cursor-pointer border ${
+                      isSelected
+                        ? 'bg-emerald-500/10 border-emerald-500/40 shadow-xs'
+                        : 'bg-zinc-950/60 hover:bg-zinc-800/80 border-zinc-800'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start gap-1 w-full">
+                      <span className="text-xs font-semibold text-zinc-200 line-clamp-2">{p.name}</span>
+                      {isSelected && (
+                        <span className="px-1.5 py-0.5 rounded-md bg-emerald-500 text-zinc-950 font-black font-mono text-[10px] shrink-0">
+                          {qty}x
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-3 flex justify-between items-center w-full">
+                      <span className="text-xs font-bold font-mono text-emerald-400 tabular-nums">
+                        ${cleanPrice(p.price).toLocaleString('es-CL')}
+                      </span>
+                      <span className={`p-1 rounded-lg transition-colors ${
+                        isSelected 
+                          ? 'bg-emerald-500 text-zinc-950' 
+                          : 'bg-zinc-800 text-zinc-300'
+                      }`}>
+                        <Plus className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
 
-        {/* Canasta */}
-        <div className="w-full md:w-80 bg-zinc-950/60 p-4 flex flex-col justify-between">
+        {/* Canasta de Comanda */}
+        <div className="w-full md:w-80 bg-zinc-950/80 p-4 flex flex-col justify-between shrink-0 border-t md:border-t-0 md:border-l border-zinc-800">
           <div>
             <div className="flex justify-between items-center border-b border-zinc-800 pb-3 mb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">
                 Comanda Actual
               </span>
-              <span className="text-xs font-mono text-zinc-500">{cart.length} ítem(s)</span>
+              <span className="text-xs font-mono text-zinc-400 font-bold">{totalItemsCount} ítem(s)</span>
             </div>
 
-            <div className="space-y-2 max-h-[40vh] md:max-h-[50vh] overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-[35vh] md:max-h-[50vh] overflow-y-auto pr-1">
               {cart.length === 0 ? (
-                <p className="text-xs text-zinc-500 text-center py-12">No hay platos seleccionados.</p>
+                <p className="text-xs text-zinc-500 text-center py-10">No hay platos seleccionados.</p>
               ) : (
                 cart.map(({ product, quantity }) => (
                   <div
@@ -266,12 +300,12 @@ export function POSOrderModal({
                   >
                     <div className="flex-1 min-w-0 pr-2">
                       <p className="text-xs font-medium text-zinc-200 truncate">{product.name}</p>
-                      <span className="text-[11px] font-mono text-zinc-400">
-                        ${(product.price * quantity).toLocaleString('es-CL')}
+                      <span className="text-[11px] font-mono text-emerald-400 font-bold">
+                        ${(cleanPrice(product.price) * quantity).toLocaleString('es-CL')}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
                         onClick={() => removeFromCart(product.id)}
@@ -296,7 +330,7 @@ export function POSOrderModal({
             </div>
           </div>
 
-          <div className="space-y-3 pt-3 border-t border-zinc-800">
+          <div className="space-y-3 pt-3 border-t border-zinc-800 mt-4">
             <div className="space-y-1 font-mono text-xs">
               <div className="flex justify-between text-zinc-400">
                 <span>Neto:</span>
@@ -316,7 +350,7 @@ export function POSOrderModal({
               type="button"
               onClick={handleConfirmOrder}
               disabled={cart.length === 0 || submitting}
-              className={`w-full py-3 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg cursor-pointer ${
+              className={`w-full py-3.5 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg cursor-pointer ${
                 isTakeoutOrder
                   ? 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-600/20'
                   : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-emerald-500/20'
