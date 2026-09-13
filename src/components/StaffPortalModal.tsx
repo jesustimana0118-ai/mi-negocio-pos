@@ -205,16 +205,24 @@ export function StaffPortalModal({
     setStep('attendance_verify');
   };
 
+  // Captura con inversión horizontal para preservar el modo selfie natural
   const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    canvas.width = video.videoWidth || 360;
-    canvas.height = video.videoHeight || 360;
+    
+    canvas.width = video.videoWidth || 480;
+    canvas.height = video.videoHeight || 480;
 
     const ctx = canvas.getContext('2d');
     if (ctx) {
+      ctx.save();
+      // Efecto espejo idéntico al video en vivo
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
+
       const photoBase64 = canvas.toDataURL('image/jpeg', 0.6);
       setCapturedPhoto(photoBase64);
       stopCamera();
@@ -233,17 +241,18 @@ export function StaffPortalModal({
         break_end: 'Regreso de colación registrado',
       };
 
-      const { error } = await supabase.from('staff_attendance').insert({
+      const payload = {
         staff_id: authenticatedStaff.id,
         type: pendingEventType,
-        event_type: pendingEventType,
-        latitude: userLocation?.lat || null,
-        longitude: userLocation?.lng || null,
-        accuracy: userLocation?.accuracy || null,
-        distance_meters: distanceMeters,
+        latitude: userLocation?.lat ?? null,
+        longitude: userLocation?.lng ?? null,
+        accuracy: userLocation?.accuracy ?? null,
+        distance_meters: distanceMeters ?? 0,
         photo_base64: capturedPhoto,
         verified: true,
-      });
+      };
+
+      const { error } = await supabase.from('staff_attendance').insert(payload);
 
       if (error) throw error;
 
@@ -535,7 +544,7 @@ export function StaffPortalModal({
           </div>
         )}
 
-        {/* Paso 2.5: Verificación de Asistencia con Cámara y GPS */}
+        {/* Paso 2.5: Verificación de Asistencia */}
         {step === 'attendance_verify' && (
           <div className="space-y-3.5 py-1">
             <div className="flex items-center justify-between">
@@ -577,7 +586,6 @@ export function StaffPortalModal({
                 </div>
               )}
 
-              {/* Botón de configuración si no se han fijado coordenadas */}
               {!localStorage.getItem('restaurant_lat') && userLocation && (
                 <button
                   type="button"
@@ -606,7 +614,7 @@ export function StaffPortalModal({
               </div>
             ) : (
               <div className="space-y-3">
-                {/* Cuadro de Video / Foto */}
+                {/* Cuadro de Video / Foto: Lo que se ve aquí es exactamente lo que se guarda */}
                 <div className="relative w-full aspect-square max-w-[280px] mx-auto rounded-3xl overflow-hidden border-2 border-zinc-800 bg-black flex items-center justify-center shadow-inner">
                   {cameraError ? (
                     <p className="p-4 text-center text-xs text-rose-400">{cameraError}</p>
@@ -627,7 +635,6 @@ export function StaffPortalModal({
                   )}
                 </div>
 
-                {/* Botones de acción de cámara */}
                 {!capturedPhoto ? (
                   <button
                     type="button"
