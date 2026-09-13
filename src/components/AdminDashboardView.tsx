@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { RecipeModal } from './RecipeModal';
 import { ProductFormModal } from './ProductFormModal';
+import { StaffAttendanceAudit } from './StaffAttendanceAudit';
 import { 
   TrendingUp, DollarSign, Receipt, Percent, 
   AlertOctagon, CheckCircle2, History,
   Flame, RefreshCw, BarChart3, Users, Utensils, 
   Plus, Edit3, Layers, Tag, Trash2, UserCheck, 
   Clock, LogOut, Coffee, ShieldCheck, Calculator, ArrowUpRight,
-  FileSpreadsheet, FileText
+  FileSpreadsheet, FileText, Camera
 } from 'lucide-react';
 
 interface ShiftAudit {
@@ -79,7 +80,7 @@ interface AdminDashboardViewProps {
 }
 
 export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
-  const [adminTab, setAdminTab] = useState<'metrics' | 'menu' | 'staff'>('metrics');
+  const [adminTab, setAdminTab] = useState<'metrics' | 'menu' | 'staff' | 'attendance'>('metrics');
   const [shifts, setShifts] = useState<ShiftAudit[]>([]);
   const [topProducts, setTopProducts] = useState<ProductSaleMetric[]>([]);
   const [productsList, setProductsList] = useState<ProductItem[]>([]);
@@ -586,10 +587,11 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
             <span>Exportar Balance (.CSV)</span>
           </button>
 
-          <div className={`flex p-1 rounded-xl border ${isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-100 border-slate-200'}`}>
+          {/* Pestañas de Navegación Gerencial */}
+          <div className={`flex p-1 rounded-xl border overflow-x-auto max-w-full ${isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-100 border-slate-200'}`}>
             <button
               onClick={() => setAdminTab('metrics')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer shrink-0 ${
                 adminTab === 'metrics'
                   ? 'bg-violet-600 text-white shadow-xs'
                   : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
@@ -599,7 +601,7 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
             </button>
             <button
               onClick={() => setAdminTab('staff')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer shrink-0 ${
                 adminTab === 'staff'
                   ? 'bg-violet-600 text-white shadow-xs'
                   : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
@@ -607,9 +609,22 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
             >
               Personal & RRHH
             </button>
+            {/* NUEVA PESTAÑA: Auditoría y Libro de Asistencia DT */}
+            <button
+              onClick={() => setAdminTab('attendance')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                adminTab === 'attendance'
+                  ? 'bg-violet-600 text-white shadow-xs'
+                  : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Camera className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Asistencia DT (GPS)</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            </button>
             <button
               onClick={() => setAdminTab('menu')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer shrink-0 ${
                 adminTab === 'menu'
                   ? 'bg-violet-600 text-white shadow-xs'
                   : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
@@ -942,9 +957,13 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
                     Libro Digital de Asistencia
                   </h3>
                 </div>
-                <span className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
-                  Últimas marcas
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('attendance')}
+                  className="text-[11px] font-mono font-bold text-violet-400 hover:text-violet-300 transition cursor-pointer"
+                >
+                  Ver Fotos y GPS →
+                </button>
               </div>
 
               <div className="overflow-x-auto">
@@ -1086,6 +1105,11 @@ export function AdminDashboardView({ isDark = true }: AdminDashboardViewProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Pestaña: Auditoría Completa de Asistencia DT (GPS y Cámara) */}
+      {adminTab === 'attendance' && (
+        <StaffAttendanceAudit isDark={isDark} />
       )}
 
       {/* Pestaña 3: Carta, Recetas & Food Cost % */}
