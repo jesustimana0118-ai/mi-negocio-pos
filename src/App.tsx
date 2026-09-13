@@ -13,9 +13,10 @@ import { StaffPortalModal, type StaffMember } from './components/StaffPortalModa
 import type { RestaurantTable } from './types/database';
 import { 
   UtensilsCrossed, Store, PlusCircle, 
-  CreditCard, Lock, ChefHat, LayoutGrid, Boxes, TrendingUp, Printer,
-  User, Sun, Moon, ShieldCheck, Delete, AlertTriangle, DollarSign
-} from 'lucide-react';
+  CreditCard, ChefHat, LayoutGrid, Boxes, TrendingUp, Printer,
+  User, Sun, Moon, ShieldCheck, Delete, AlertTriangle, DollarSign,
+  KeyRound, LogOut, Loader2
+} from 'lucide-react';;
 
 // Atrapa-errores para evitar pantallas negras en móviles
 interface ErrorBoundaryProps {
@@ -71,17 +72,59 @@ interface ActiveOrderSummary {
 
 const CURRENT_SHIFT_ID = '11111111-2222-3333-4444-555555555555';
 const MASTER_PIN = '8068';
+const STORE_DEFAULT_PASSWORD = '8068';
+
+// Permisos y vistas permitidas según rol
+const ROLE_PERMISSIONS: Record<string, Array<'salon' | 'kitchen' | 'inventory' | 'cash' | 'admin'>> = {
+  admin: ['salon', 'kitchen', 'inventory', 'cash', 'admin'],
+  cashier: ['cash', 'salon'],
+  waiter: ['salon'],
+  kitchen: ['kitchen'],
+};
+
+// Vista inicial predeterminada por rol
+const ROLE_DEFAULT_VIEW: Record<string, 'salon' | 'kitchen' | 'inventory' | 'cash' | 'admin'> = {
+  admin: 'admin',
+  cashier: 'cash',
+  waiter: 'salon',
+  kitchen: 'kitchen',
+};
 
 export default function App() {
-  // Persistencia de sesión en el teléfono para evitar pedir PIN a cada rato
+  // 1. Autorización de Terminal del Local
+  const [isStoreAuthorized, setIsStoreAuthorized] = useState(() => {
+    return localStorage.getItem('pos_store_authorized') === 'true';
+  });
+  const [storePasswordInput, setStorePasswordInput] = useState('');
+  const [storePassError, setStorePassError] = useState(false);
+
+  // 2. Autenticación de Trabajador por PIN
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return localStorage.getItem('pos_authenticated') === 'true';
   });
 
   const [enteredPin, setEnteredPin] = useState('');
   const [pinError, setPinError] = useState(false);
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
 
-  const [currentView, setCurrentView] = useState<'salon' | 'kitchen' | 'inventory' | 'cash' | 'admin'>('salon');
+  // 3. Colaborador Activo
+  const [activeStaff, setActiveStaff] = useState<StaffMember>(() => {
+    const savedStaff = localStorage.getItem('pos_active_staff');
+    if (savedStaff) {
+      try { return JSON.parse(savedStaff); } catch { /* fallback */ }
+    }
+    return {
+      id: 'default',
+      name: 'Administrador / Jefe',
+      role: 'admin',
+      pin_code: '8068',
+    };
+  });
+
+  const [currentView, setCurrentView] = useState<'salon' | 'kitchen' | 'inventory' | 'cash' | 'admin'>(() => {
+    return ROLE_DEFAULT_VIEW[activeStaff.role] || 'salon';
+  });
+
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   
   const [selectedTable, setSelectedTable] = useState<RestaurantTable | null>(null);
@@ -94,40 +137,17 @@ export default function App() {
   const [isClosingShift, setIsClosingShift] = useState(false);
   const [printingOrder, setPrintingOrder] = useState<{ id: string; isPrecuenta: boolean } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-
-  // Recordar colaborador en el dispositivo
-  const [activeStaff, setActiveStaff] = useState<StaffMember>(() => {
-    const savedStaff = localStorage.getItem('pos_active_staff');
-    if (savedStaff) {
-      try { return JSON.parse(savedStaff); } catch { /* fallback */ }
-    }
-    return {
-      id: 'default',
-      name: 'Carlos Muñoz',
-      role: 'waiter',
-      pin_code: '1234',
-    };
-  });
-
   const [isStaffPortalOpen, setIsStaffPortalOpen] = useState(false);
 
   const isDark = theme === 'dark';
 
+  // Verificar que la vista actual esté permitida para el rol activo
   useEffect(() => {
-    async function loadDefaultStaff() {
-      const { data } = await supabase
-        .from('staff')
-        .select('id, name, role, pin_code')
-        .eq('pin_code', activeStaff.pin_code || '1234')
-        .maybeSingle();
-
-      if (data) {
-        setActiveStaff(data as StaffMember);
-        localStorage.setItem('pos_active_staff', JSON.stringify(data));
-      }
+    const allowed = ROLE_PERMISSIONS[activeStaff.role] || ['salon'];
+    if (!allowed.includes(currentView)) {
+      setCurrentView(ROLE_DEFAULT_VIEW[activeStaff.role] || allowed[0]);
     }
-    loadDefaultStaff();
-  }, []);
+  }, [activeStaff.role, currentView]);
 
   useEffect(() => {
     async function loadTableOrder() {
@@ -183,29 +203,99 @@ export default function App() {
     setRefreshKey((k) => k + 1);
   };
 
-  // Desbloqueo rápido: Acepta tanto el PIN Maestro como el PIN del Garzón
-  const handleNumClick = (num: string) => {
-    if (enteredPin.length < 4) {
-      const nextPin = enteredPin + num;
-      setEnteredPin(nextPin);
-      setPinError(false);
+  // Autorización de la contraseña del Local
+  const handleAuthorizeStore = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (storePasswordInput === STORE_DEFAULT_PASSWORD || storePasswordInput === MASTER_PIN) {
+      setIsStoreAuthorized(true);
+      localStorage.setItem('pos_store_authorized', 'true');
+      setStorePassError(false);
+      setStorePasswordInput('');
+    } else {
+      setStorePassError(true);
+    }
+  };
 
-      if (nextPin.length === 4) {
-        if (nextPin === MASTER_PIN || nextPin === activeStaff.pin_code) {
-          setIsAuthenticated(true);
-          localStorage.setItem('pos_authenticated', 'true');
-        } else {
-          setPinError(true);
-          setTimeout(() => {
-            setEnteredPin('');
-            setPinError(false);
-          }, 800);
-        }
+  // Verificación dinámica de PIN en Supabase
+  const processPinVerification = async (pin: string) => {
+    setIsVerifyingPin(true);
+    setPinError(false);
+
+    try {
+      // 1. PIN Maestro de Rescate
+      if (pin === MASTER_PIN) {
+        const masterAdmin: StaffMember = {
+          id: 'master-admin',
+          name: 'Administrador Maestro',
+          role: 'admin',
+          pin_code: MASTER_PIN,
+        };
+        setActiveStaff(masterAdmin);
+        localStorage.setItem('pos_active_staff', JSON.stringify(masterAdmin));
+        setIsAuthenticated(true);
+        localStorage.setItem('pos_authenticated', 'true');
+        setCurrentView('admin');
+        setEnteredPin('');
+        return;
       }
+
+      // 2. Consulta en la tabla staff de Supabase
+      const { data, error } = await supabase
+        .from('staff')
+        .select('*')
+        .eq('pin_code', pin)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error || !data) {
+        setPinError(true);
+        if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(200);
+        setTimeout(() => {
+          setEnteredPin('');
+          setPinError(false);
+        }, 800);
+        return;
+      }
+
+      // Usuario válido: setear sesión y redirigir según su rol
+      const staffMember: StaffMember = {
+        id: data.id,
+        name: data.name,
+        role: data.role,
+        pin_code: data.pin_code,
+      };
+
+      setActiveStaff(staffMember);
+      localStorage.setItem('pos_active_staff', JSON.stringify(staffMember));
+      setIsAuthenticated(true);
+      localStorage.setItem('pos_authenticated', 'true');
+
+      // Redirección inteligente al espacio del rol
+      const destinationView = ROLE_DEFAULT_VIEW[staffMember.role] || 'salon';
+      setCurrentView(destinationView);
+      setEnteredPin('');
+
+    } catch (err) {
+      console.error('Error al verificar PIN:', err);
+      setPinError(true);
+    } finally {
+      setIsVerifyingPin(false);
+    }
+  };
+
+  const handleNumClick = (num: string) => {
+    if (isVerifyingPin || enteredPin.length >= 4) return;
+    const nextPin = enteredPin + num;
+    setEnteredPin(nextPin);
+    setPinError(false);
+
+    if (nextPin.length === 4) {
+      processPinVerification(nextPin);
     }
   };
 
   const handleClearPin = () => {
+    if (isVerifyingPin) return;
     setEnteredPin('');
     setPinError(false);
   };
@@ -214,8 +304,76 @@ export default function App() {
     setIsAuthenticated(false);
     localStorage.removeItem('pos_authenticated');
     setEnteredPin('');
+    setPinError(false);
   };
 
+  const handleUnlinkTerminal = () => {
+    if (confirm('¿Deseas desvincular este dispositivo del local? Se solicitará la contraseña maestra.')) {
+      setIsStoreAuthorized(false);
+      setIsAuthenticated(false);
+      localStorage.removeItem('pos_store_authorized');
+      localStorage.removeItem('pos_authenticated');
+      setEnteredPin('');
+    }
+  };
+
+  // PANTALLA 1: Autorización de terminal del Restaurante
+  if (!isStoreAuthorized) {
+    return (
+      <main className="min-h-screen w-full bg-[#0b0f17] text-slate-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col items-center space-y-5 backdrop-blur-xl">
+          <div className="p-4 bg-violet-500/10 rounded-2xl border border-violet-500/20 text-violet-400">
+            <Store className="w-8 h-8" />
+          </div>
+
+          <div className="text-center space-y-1">
+            <h2 className="text-lg font-black tracking-tight">Vincular Terminal POS</h2>
+            <p className="text-xs text-slate-400 font-mono">
+              Ingresa la contraseña general del restaurante para habilitar este equipo.
+            </p>
+          </div>
+
+          <form onSubmit={handleAuthorizeStore} className="w-full space-y-3 font-mono">
+            <div className="space-y-1">
+              <input
+                type="password"
+                required
+                placeholder="Contraseña del Local"
+                value={storePasswordInput}
+                onChange={(e) => {
+                  setStorePasswordInput(e.target.value);
+                  setStorePassError(false);
+                }}
+                className={`w-full p-3 rounded-xl text-center text-sm font-bold bg-slate-950 border outline-none tracking-wider ${
+                  storePassError ? 'border-rose-500 bg-rose-500/10 text-rose-300' : 'border-slate-700 text-slate-100 focus:border-violet-500'
+                }`}
+                autoFocus
+              />
+              {storePassError && (
+                <p className="text-[11px] text-rose-500 text-center font-sans font-bold">
+                  Contraseña de local incorrecta.
+                </p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-3 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-violet-600/20 cursor-pointer"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span>Autorizar Dispositivo</span>
+            </button>
+          </form>
+
+          <span className="text-[10px] font-mono text-slate-500 text-center">
+            Contraseña inicial de fábrica: <strong>8068</strong>
+          </span>
+        </div>
+      </main>
+    );
+  }
+
+  // PANTALLA 2: Teclado táctil de PIN personal del trabajador
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen w-full bg-[#0b0f17] text-slate-100 flex items-center justify-center p-4">
@@ -227,7 +385,7 @@ export default function App() {
           <div className="text-center space-y-1">
             <h2 className="text-lg font-black tracking-tight">Acceso Rápido POS</h2>
             <p className="text-xs text-slate-400 font-mono">
-              PIN Maestro o PIN de <strong className="text-sky-400">{activeStaff.name}</strong>
+              Digita tu PIN personal de 4 dígitos
             </p>
           </div>
 
@@ -246,8 +404,18 @@ export default function App() {
             ))}
           </div>
 
-          {pinError && (
-            <span className="text-xs font-mono text-rose-400 font-bold animate-pulse">PIN Incorrecto</span>
+          {pinError ? (
+            <span className="text-xs font-mono text-rose-400 font-bold animate-pulse">
+              PIN no encontrado o personal inactivo
+            </span>
+          ) : isVerifyingPin ? (
+            <span className="text-xs font-mono text-sky-400 font-bold flex items-center gap-1.5">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Verificando rol...
+            </span>
+          ) : (
+            <span className="text-[11px] font-mono text-slate-500">
+              Ingresa tu código numérico
+            </span>
           )}
 
           <div className="grid grid-cols-3 gap-3 w-full">
@@ -255,50 +423,56 @@ export default function App() {
               <button
                 key={num}
                 type="button"
+                disabled={isVerifyingPin}
                 onClick={() => handleNumClick(num)}
-                className="h-14 bg-slate-800/80 hover:bg-slate-700 active:bg-sky-600 text-slate-100 font-mono font-bold text-lg rounded-2xl border border-slate-700/60 transition-all active:scale-95 shadow-xs cursor-pointer"
+                className="h-14 bg-slate-800/80 hover:bg-slate-700 active:bg-sky-600 text-slate-100 font-mono font-bold text-lg rounded-2xl border border-slate-700/60 transition-all active:scale-95 shadow-xs cursor-pointer disabled:opacity-50"
               >
                 {num}
               </button>
             ))}
             <button
               type="button"
+              disabled={isVerifyingPin}
               onClick={handleClearPin}
-              className="h-14 bg-slate-800/80 hover:bg-slate-700 active:bg-slate-600 text-slate-400 hover:text-slate-200 font-mono text-sm rounded-2xl border border-slate-700/60 transition-all active:scale-95 flex items-center justify-center cursor-pointer"
+              className="h-14 bg-slate-800/80 hover:bg-slate-700 active:bg-slate-600 text-slate-400 hover:text-slate-200 font-mono text-sm rounded-2xl border border-slate-700/60 transition-all active:scale-95 flex items-center justify-center cursor-pointer disabled:opacity-50"
             >
               <Delete className="w-5 h-5" />
             </button>
             <button
               type="button"
+              disabled={isVerifyingPin}
               onClick={() => handleNumClick('0')}
-              className="h-14 bg-slate-800/80 hover:bg-slate-700 active:bg-sky-600 text-slate-100 font-mono font-bold text-lg rounded-2xl border border-slate-700/60 transition-all active:scale-95 shadow-xs cursor-pointer"
+              className="h-14 bg-slate-800/80 hover:bg-slate-700 active:bg-sky-600 text-slate-100 font-mono font-bold text-lg rounded-2xl border border-slate-700/60 transition-all active:scale-95 shadow-xs cursor-pointer disabled:opacity-50"
             >
               0
             </button>
             <button
               type="button"
-              onClick={() => {
-                if (enteredPin === MASTER_PIN || enteredPin === activeStaff.pin_code) {
-                  setIsAuthenticated(true);
-                  localStorage.setItem('pos_authenticated', 'true');
-                } else {
-                  setPinError(true);
-                  setTimeout(() => { setEnteredPin(''); setPinError(false); }, 800);
-                }
-              }}
-              className="h-14 bg-sky-500 hover:bg-sky-400 text-slate-950 font-mono font-bold text-xs rounded-2xl transition-all active:scale-95 flex items-center justify-center shadow-md shadow-sky-500/20 cursor-pointer"
+              disabled={isVerifyingPin || enteredPin.length < 4}
+              onClick={() => processPinVerification(enteredPin)}
+              className="h-14 bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 font-mono font-bold text-xs rounded-2xl transition-all active:scale-95 flex items-center justify-center shadow-md shadow-sky-500/20 cursor-pointer"
             >
               Entrar
             </button>
           </div>
 
-          <span className="text-[10px] font-mono text-slate-500">
-            Terminal POS Protegido • Dispositivo Vinculado
-          </span>
+          <div className="w-full flex items-center justify-between pt-2 border-t border-slate-800/80 text-[11px] font-mono">
+            <span className="text-slate-500">Terminal Activa</span>
+            <button
+              type="button"
+              onClick={handleUnlinkTerminal}
+              className="text-slate-500 hover:text-rose-400 transition cursor-pointer"
+            >
+              Desvincular
+            </button>
+          </div>
         </div>
       </main>
     );
   }
+
+  // Lista de vistas permitidas para el usuario conectado
+  const allowedViews = ROLE_PERMISSIONS[activeStaff.role] || ['salon'];
 
   return (
     <main
@@ -308,7 +482,7 @@ export default function App() {
     >
       <div className="w-full max-w-7xl space-y-5">
         
-        {/* Barra superior */}
+        {/* Barra superior con datos del usuario activo y permisos */}
         <header
           className={`flex flex-col lg:flex-row items-center justify-between p-3.5 sm:px-6 rounded-2xl border transition-all gap-4 ${
             isDark
@@ -327,162 +501,145 @@ export default function App() {
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 </h1>
                 <p className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500 font-medium'}`}>
-                  Salón, KDS, Bodega, Caja & Gerencia
+                  Operando como: <strong className="capitalize text-blue-500">{activeStaff.name}</strong> ({activeStaff.role})
                 </p>
               </div>
             </div>
 
-            {/* Controles en móvil: Portal, Tema y Bloquear */}
+            {/* Controles móviles */}
             <div className="flex lg:hidden items-center gap-2">
               <button
                 onClick={() => setIsStaffPortalOpen(true)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all active:scale-95 cursor-pointer ${
-                  isDark
-                    ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border-zinc-700'
-                    : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200 shadow-xs'
+                className={`flex items-center gap-1 px-2 py-1.5 rounded-xl border text-xs font-bold ${
+                  isDark ? 'bg-zinc-800 text-zinc-200 border-zinc-700' : 'bg-slate-100 text-slate-800 border-slate-200'
                 }`}
-                title="Portal de Personal"
               >
                 <User className="w-3.5 h-3.5 text-emerald-500" />
-                <span className="max-w-[70px] truncate">{activeStaff.name.split(' ')[0]}</span>
-                <span className={`text-[9px] font-mono px-1 py-0.2 rounded border ${
-                  isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-slate-100 border-slate-300 text-slate-700'
-                }`}>
-                  PORTAL
-                </span>
-              </button>
-
-              <button
-                onClick={() => setTheme(isDark ? 'light' : 'dark')}
-                className={`p-2 rounded-xl border cursor-pointer ${
-                  isDark ? 'bg-zinc-800 border-zinc-700 text-amber-400' : 'bg-slate-100 border-slate-200 text-slate-700'
-                }`}
-              >
-                {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                <span className="text-[10px]">Portal</span>
               </button>
 
               <button
                 onClick={handleLock}
-                className="px-2.5 py-1.5 bg-rose-500/10 text-rose-600 border border-rose-500/20 rounded-xl text-xs font-bold cursor-pointer"
+                className="p-1.5 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-xl"
+                title="Cambiar usuario"
               >
-                Bloquear
+                <LogOut className="w-4 h-4" />
               </button>
             </div>
           </div>
 
+          {/* Menú de Navegación Dinámico Filtrado por Rol */}
           <div
             className={`flex items-center p-1 rounded-xl border gap-1 overflow-x-auto max-w-full ${
               isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-100 border-slate-200'
             }`}
           >
-            <button
-              onClick={() => setCurrentView('salon')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
-                currentView === 'salon'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" /> Salón
-            </button>
-            <button
-              onClick={() => setCurrentView('kitchen')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
-                currentView === 'kitchen'
-                  ? 'bg-amber-500 text-zinc-950 shadow-xs'
-                  : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <ChefHat className="w-3.5 h-3.5" /> Cocina
-            </button>
-            <button
-              onClick={() => setCurrentView('inventory')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
-                currentView === 'inventory'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Boxes className="w-3.5 h-3.5" /> Bodega
-            </button>
-            <button
-              onClick={() => setCurrentView('cash')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
-                currentView === 'cash'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <DollarSign className="w-3.5 h-3.5" /> Caja
-            </button>
-            <button
-              onClick={() => setCurrentView('admin')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
-                currentView === 'admin'
-                  ? 'bg-violet-600 text-white shadow-xs'
-                  : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <TrendingUp className="w-3.5 h-3.5" /> Gerencia
-            </button>
+            {allowedViews.includes('salon') && (
+              <button
+                onClick={() => setCurrentView('salon')}
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
+                  currentView === 'salon'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" /> Salón
+              </button>
+            )}
+
+            {allowedViews.includes('kitchen') && (
+              <button
+                onClick={() => setCurrentView('kitchen')}
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
+                  currentView === 'kitchen'
+                    ? 'bg-amber-500 text-zinc-950 shadow-xs'
+                    : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ChefHat className="w-3.5 h-3.5" /> Cocina (KDS)
+              </button>
+            )}
+
+            {allowedViews.includes('inventory') && (
+              <button
+                onClick={() => setCurrentView('inventory')}
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
+                  currentView === 'inventory'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Boxes className="w-3.5 h-3.5" /> Bodega
+              </button>
+            )}
+
+            {allowedViews.includes('cash') && (
+              <button
+                onClick={() => setCurrentView('cash')}
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
+                  currentView === 'cash'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <DollarSign className="w-3.5 h-3.5" /> Caja
+              </button>
+            )}
+
+            {allowedViews.includes('admin') && (
+              <button
+                onClick={() => setCurrentView('admin')}
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
+                  currentView === 'admin'
+                    ? 'bg-violet-600 text-white shadow-xs'
+                    : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5" /> Gerencia
+              </button>
+            )}
           </div>
 
+          {/* Acciones de Escritorio */}
           <div className="hidden lg:flex items-center gap-3 shrink-0">
             <button
               onClick={() => setTheme(isDark ? 'light' : 'dark')}
-              className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-2 transition-all active:scale-95 cursor-pointer ${
+              className={`p-2 rounded-xl border font-bold text-xs flex items-center transition cursor-pointer ${
                 isDark
                   ? 'bg-zinc-800 hover:bg-zinc-700 text-amber-300 border-zinc-700'
                   : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-xs'
               }`}
             >
               {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
-              <span>{isDark ? 'Claro' : 'Oscuro'}</span>
             </button>
 
-            <div className={`w-px h-6 ${isDark ? 'bg-zinc-800' : 'bg-slate-200'}`} />
-
-            {/* Acceso al Portal de Personal (Asistencia y Colación) */}
             <button
               onClick={() => setIsStaffPortalOpen(true)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all active:scale-95 cursor-pointer ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
                 isDark
                   ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border-zinc-700'
                   : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200 shadow-xs'
               }`}
-              title="Portal de Personal • Marcar asistencia o colación"
+              title="Marcar asistencia o colación"
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <User className="w-3.5 h-3.5 text-slate-500" />
+              <User className="w-3.5 h-3.5 text-blue-500" />
               <span>{activeStaff.name}</span>
-              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
-                isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-slate-100 border-slate-300 text-slate-700 font-semibold'
-              }`}>
-                PORTAL
-              </span>
-            </button>
-
-            <button
-              onClick={() => setIsClosingShift(true)}
-              className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-400 border border-amber-500/30 rounded-xl transition-all active:scale-95 cursor-pointer shadow-2xs"
-            >
-              <Lock className="w-3.5 h-3.5" /> Cierre
             </button>
 
             <button
               onClick={handleLock}
-              className="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-500/30 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
-              title="Bloquear sistema"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/30 rounded-xl text-xs font-bold transition cursor-pointer active:scale-95"
+              title="Cerrar turno de usuario y bloquear"
             >
-              Bloquear
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Bloquear</span>
             </button>
           </div>
         </header>
 
-        {/* Vista protegida con ErrorBoundary para evitar pantallas negras en móviles */}
+        {/* Contenido Dinámico */}
         <ErrorBoundary>
-          {/* Vista Salón */}
-          {currentView === 'salon' && (
+          {currentView === 'salon' && allowedViews.includes('salon') && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
               <div
                 className={`lg:col-span-2 p-5 rounded-2xl border transition-colors shadow-xs ${
@@ -645,29 +802,25 @@ export default function App() {
             </div>
           )}
 
-          {/* Vista Cocina */}
-          {currentView === 'kitchen' && (
+          {currentView === 'kitchen' && allowedViews.includes('kitchen') && (
             <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
               <KitchenView isDark={isDark} />
             </div>
           )}
 
-          {/* Vista Bodega */}
-          {currentView === 'inventory' && (
+          {currentView === 'inventory' && allowedViews.includes('inventory') && (
             <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
               <InventoryView isDark={isDark} />
             </div>
           )}
 
-          {/* Vista Caja */}
-          {currentView === 'cash' && (
+          {currentView === 'cash' && allowedViews.includes('cash') && (
             <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
               <CashRegisterView isDark={isDark} />
             </div>
           )}
 
-          {/* Vista Gerencia */}
-          {currentView === 'admin' && (
+          {currentView === 'admin' && allowedViews.includes('admin') && (
             <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
               <AdminDashboardView isDark={isDark} />
             </div>
@@ -675,7 +828,7 @@ export default function App() {
         </ErrorBoundary>
       </div>
 
-      {/* Modal Portal de Personal (Asistencia y Colaciones) */}
+      {/* Modales */}
       {isStaffPortalOpen && (
         <StaffPortalModal
           currentStaff={activeStaff}
