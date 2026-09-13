@@ -53,7 +53,6 @@ export function ReceiptModal({
     async function loadReceiptData() {
       setLoading(true);
       try {
-        // 1. Cargar orden
         const { data: orderData, error: orderErr } = await supabase
           .from('orders')
           .select('*')
@@ -63,7 +62,6 @@ export function ReceiptModal({
         if (orderErr) throw orderErr;
         setOrder(orderData as OrderData);
 
-        // 2. Cargar ítems
         const { data: itemsData, error: itemsErr } = await supabase
           .from('order_items')
           .select(`
@@ -98,10 +96,15 @@ export function ReceiptModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      {/* Reglas CSS de Impresión Térmica Directa */}
+      {/* Reglas CSS de Impresión Térmica Directa para 1 Sola Hoja */}
       <style>{`
         @media print {
-          /* Ocultar todo el sitio web excepto el ticket */
+          html, body {
+            height: max-content !important;
+            overflow: hidden !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
           body * {
             visibility: hidden;
           }
@@ -109,10 +112,10 @@ export function ReceiptModal({
             visibility: visible;
           }
           .thermal-print-area {
-            position: absolute !important;
+            position: fixed !important;
             left: 0 !important;
             top: 0 !important;
-            width: ${paperWidth === '80mm' ? '76mm' : '48mm'} !important;
+            width: ${paperWidth === '80mm' ? '72mm' : '48mm'} !important;
             margin: 0 !important;
             padding: 2mm 3mm !important;
             background: #ffffff !important;
@@ -120,13 +123,17 @@ export function ReceiptModal({
             box-shadow: none !important;
             border: none !important;
             border-radius: 0 !important;
+            page-break-after: avoid !important;
+            page-break-inside: avoid !important;
+            break-after: avoid !important;
+            break-inside: avoid !important;
           }
           .no-print {
             display: none !important;
           }
           @page {
             size: auto;
-            margin: 0mm;
+            margin: 0mm !important;
           }
         }
       `}</style>
@@ -191,7 +198,7 @@ export function ReceiptModal({
           </div>
         </div>
 
-        {/* Visor de Rollo Térmico (Fondo Blanco simulando papel) */}
+        {/* Visor de Rollo Térmico */}
         <div className="flex-1 overflow-y-auto flex justify-center py-2 bg-zinc-950/40 rounded-2xl border border-zinc-800/80 p-3">
           {loading ? (
             <div className="flex items-center gap-2 text-xs font-mono text-zinc-400 py-16">
