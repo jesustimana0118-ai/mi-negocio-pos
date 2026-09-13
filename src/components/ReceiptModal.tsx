@@ -1,28 +1,30 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Printer, X, FileText } from 'lucide-react';
+import { 
+  Printer, X, Scissors, Loader2
+} from 'lucide-react';
 
-interface ReceiptItem {
+interface OrderItemDetail {
   id: string;
   quantity: number;
   unit_price: number;
   subtotal: number;
-  product: {
+  product?: {
     name: string;
   };
 }
 
-interface OrderDetail {
+interface OrderData {
   id: string;
   order_number: number;
   created_at: string;
+  paid_at?: string;
+  waiter_name: string;
+  payment_method?: string;
   subtotal_net: number;
   iva_amount: number;
   tip_amount: number;
   total_amount: number;
-  payment_method: string | null;
-  waiter_name?: string | null;
-  status: string;
 }
 
 interface ReceiptModalProps {
@@ -31,6 +33,7 @@ interface ReceiptModalProps {
   tableNumber: number;
   isPrecuenta?: boolean;
   onClose: () => void;
+  isDark?: boolean;
 }
 
 export function ReceiptModal({
@@ -39,230 +42,305 @@ export function ReceiptModal({
   tableNumber,
   isPrecuenta = true,
   onClose,
+  isDark = true,
 }: ReceiptModalProps) {
-  const [order, setOrder] = useState<OrderDetail | null>(null);
-  const [items, setItems] = useState<ReceiptItem[]>([]);
+  const [paperWidth, setPaperWidth] = useState<'80mm' | '58mm'>('80mm');
+  const [order, setOrder] = useState<OrderData | null>(null);
+  const [items, setItems] = useState<OrderItemDetail[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadReceiptData() {
       setLoading(true);
+      try {
+        // 1. Cargar orden
+        const { data: orderData, error: orderErr } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('id', orderId)
+          .single();
 
-      const { data: orderData } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('id', orderId)
-        .single();
+        if (orderErr) throw orderErr;
+        setOrder(orderData as OrderData);
 
-      const { data: itemsData } = await supabase
-        .from('order_items')
-        .select(`
-          id,
-          quantity,
-          unit_price,
-          subtotal,
-          product:products(name)
-        `)
-        .eq('order_id', orderId);
+        // 2. Cargar ítems
+        const { data: itemsData, error: itemsErr } = await supabase
+          .from('order_items')
+          .select(`
+            id,
+            quantity,
+            unit_price,
+            subtotal,
+            product:products(name)
+          `)
+          .eq('order_id', orderId);
 
-      if (orderData) setOrder(orderData as OrderDetail);
-      if (itemsData) setItems(itemsData as unknown as ReceiptItem[]);
-
-      setLoading(false);
+        if (itemsErr) throw itemsErr;
+        setItems((itemsData as unknown as OrderItemDetail[]) || []);
+      } catch (err) {
+        console.error('Error cargando comprobante:', err);
+      } finally {
+        setLoading(false);
+      }
     }
 
-    loadReceiptData();
+    if (orderId) {
+      loadReceiptData();
+    }
   }, [orderId]);
 
   const handlePrint = () => {
     window.print();
   };
 
-  const formattedDate = order?.created_at
-    ? new Date(order.created_at).toLocaleString('es-CL', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      })
-    : '';
-
-  const baseConsumption = order ? order.subtotal_net + order.iva_amount : 0;
-  const suggestedTip = Math.round(baseConsumption * 0.1);
+  const isTakeout = tableNumber === 0 || tableName.toLowerCase().includes('para llevar');
+  const printDate = order?.created_at ? new Date(order.created_at) : new Date();
 
   return (
-    <>
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+      {/* Reglas CSS de Impresión Térmica Directa */}
       <style>{`
         @media print {
+          /* Ocultar todo el sitio web excepto el ticket */
           body * {
             visibility: hidden;
           }
-          #thermal-receipt-print, #thermal-receipt-print * {
+          .thermal-print-area, .thermal-print-area * {
             visibility: visible;
           }
-          #thermal-receipt-print {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 78mm;
-            padding: 0;
-            margin: 0;
+          .thermal-print-area {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: ${paperWidth === '80mm' ? '76mm' : '48mm'} !important;
+            margin: 0 !important;
+            padding: 2mm 3mm !important;
             background: #ffffff !important;
             color: #000000 !important;
-            font-family: monospace;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
           }
           .no-print {
             display: none !important;
           }
+          @page {
+            size: auto;
+            margin: 0mm;
+          }
         }
       `}</style>
 
-      <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 no-print">
-        <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-2xl p-5 shadow-2xl space-y-4 max-h-[92vh] flex flex-col">
-          <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-            <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-amber-400" />
-              <h3 className="font-bold text-sm text-zinc-100">
-                {isPrecuenta ? 'Precuenta de Salón' : 'Comprobante de Pago'}
+      <div className={`w-full max-w-lg rounded-3xl p-5 shadow-2xl space-y-4 max-h-[94vh] flex flex-col border transition-all ${
+        isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
+      }`}>
+        {/* Cabecera y Controles en Pantalla */}
+        <div className="no-print flex items-center justify-between border-b pb-3 border-zinc-800">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20">
+              <Printer className="w-4 h-4" />
+            </span>
+            <div>
+              <h3 className="font-extrabold text-sm">
+                {isPrecuenta ? 'Precuenta de Salón' : 'Comprobante de Venta'}
               </h3>
+              <p className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                Vista previa térmica • {paperWidth}
+              </p>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Selector de Ancho de Rollo */}
+            <div className={`flex rounded-xl p-0.5 border font-mono text-[11px] font-bold ${
+              isDark ? 'bg-zinc-950 border-zinc-700' : 'bg-slate-100 border-slate-300'
+            }`}>
+              <button
+                type="button"
+                onClick={() => setPaperWidth('80mm')}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                  paperWidth === '80mm'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                80mm
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaperWidth('58mm')}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                  paperWidth === '58mm'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                58mm
+              </button>
+            </div>
+
             <button
+              type="button"
               onClick={onClose}
-              className="p-1.5 text-zinc-400 hover:text-zinc-100 bg-zinc-800 rounded-lg transition"
+              className={`p-1.5 rounded-xl transition cursor-pointer ${
+                isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+              }`}
             >
               <X className="w-4 h-4" />
             </button>
           </div>
+        </div>
 
-          <div className="flex-1 overflow-y-auto pr-1">
-            {loading ? (
-              <div className="py-20 text-center text-xs text-zinc-500 font-mono animate-pulse">
-                Generando formato térmico...
+        {/* Visor de Rollo Térmico (Fondo Blanco simulando papel) */}
+        <div className="flex-1 overflow-y-auto flex justify-center py-2 bg-zinc-950/40 rounded-2xl border border-zinc-800/80 p-3">
+          {loading ? (
+            <div className="flex items-center gap-2 text-xs font-mono text-zinc-400 py-16">
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+              Generando ticket...
+            </div>
+          ) : !order ? (
+            <p className="text-xs text-rose-400 font-mono py-12">No se encontró la orden.</p>
+          ) : (
+            <div
+              id="thermal-receipt"
+              className={`thermal-print-area bg-white text-black font-mono shadow-xl rounded-md p-4 transition-all ${
+                paperWidth === '80mm' ? 'w-[320px] text-xs' : 'w-[250px] text-[11px]'
+              }`}
+              style={{ fontFamily: "'Courier New', Courier, monospace" }}
+            >
+              {/* Encabezado del Local */}
+              <div className="text-center space-y-0.5 border-b border-dashed border-black pb-2 mb-2">
+                <h2 className="text-sm font-black tracking-wider uppercase">MI NEGOCIO POS</h2>
+                <p className="text-[10px]">RESTAURANTE & BAR</p>
+                <p className="text-[10px]">RUT: 76.123.456-7</p>
+                <p className="text-[10px]">Av. Principal #1234, Santiago</p>
+                <p className="text-[10px]">Tel: +56 9 1234 5678</p>
               </div>
-            ) : order ? (
-              <div
-                id="thermal-receipt-print"
-                className="bg-white text-zinc-950 font-mono text-[12px] p-5 rounded-xl shadow-inner border border-zinc-200 select-text leading-tight"
-              >
-                <div className="text-center space-y-1 border-b border-dashed border-zinc-400 pb-3 mb-3">
-                  <h2 className="font-black text-sm uppercase tracking-wider">
-                    Mi Negocio POS
-                  </h2>
-                  <p className="text-[11px] text-zinc-700">R.U.T.: 76.842.190-K</p>
-                  <p className="text-[11px] text-zinc-700">Giro: Restaurante y Bar</p>
-                  <p className="text-[10px] text-zinc-500">Av. Gastronomía 1234, Santiago</p>
-                  <p className="text-[10px] text-zinc-500">Teléfono: +56 9 8765 4321</p>
+
+              {/* Título del Documento */}
+              <div className="text-center my-2 py-1 border-y border-dashed border-black">
+                <span className="font-black tracking-wider block">
+                  {isPrecuenta ? '*** PRECUENTA ***' : '*** COMPROBANTE DE PAGO ***'}
+                </span>
+                {isPrecuenta && (
+                  <span className="text-[9px] block uppercase">
+                    (Documento no válido como boleta)
+                  </span>
+                )}
+              </div>
+
+              {/* Metadatos de la Mesa y Garzón */}
+              <div className="space-y-0.5 text-[11px] pb-2 border-b border-dashed border-black">
+                <div className="flex justify-between">
+                  <span>ORDEN: #{order.order_number}</span>
+                  <span className="font-black">
+                    {isTakeout ? 'PARA LLEVAR' : `MESA #${tableNumber}`}
+                  </span>
                 </div>
-
-                <div className="space-y-0.5 border-b border-dashed border-zinc-400 pb-2.5 mb-3 text-[11px]">
-                  <div className="flex justify-between">
-                    <span className="font-bold">ORDEN #{order.order_number}</span>
-                    <span className="font-bold">MESA {tableNumber}</span>
-                  </div>
-                  <div className="flex justify-between text-zinc-600">
-                    <span>Sector: {tableName}</span>
-                    <span>{formattedDate}</span>
-                  </div>
-                  <div className="flex justify-between text-zinc-600 font-semibold">
-                    <span>Atendido por:</span>
-                    <span>{order.waiter_name || 'Garzón'}</span>
-                  </div>
-                  <div className="pt-1 text-center font-bold text-[10px] uppercase text-zinc-700">
-                    {isPrecuenta
-                      ? '*** ESTADO DE CUENTA / PRECUENTA ***'
-                      : '*** COMPROBANTE DE VENTA VALORADA ***'}
-                  </div>
+                <div className="flex justify-between">
+                  <span>UBICACIÓN:</span>
+                  <span className="truncate max-w-[150px] text-right">{tableName}</span>
                 </div>
-
-                <table className="w-full text-left mb-3">
-                  <thead>
-                    <tr className="border-b border-zinc-950 text-[11px]">
-                      <th className="pb-1 w-8">CANT</th>
-                      <th className="pb-1">DETALLE</th>
-                      <th className="pb-1 text-right">TOTAL</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-dotted divide-zinc-300">
-                    {items.map((it) => (
-                      <tr key={it.id}>
-                        <td className="py-1 font-bold align-top">{it.quantity}</td>
-                        <td className="py-1 align-top pr-1">{it.product.name}</td>
-                        <td className="py-1 text-right align-top tabular-nums">
-                          ${it.subtotal.toLocaleString('es-CL')}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                <div className="border-t border-dashed border-zinc-400 pt-2.5 space-y-1 text-[11px]">
-                  <div className="flex justify-between text-zinc-600">
-                    <span>Subtotal Neto:</span>
-                    <span className="tabular-nums">${order.subtotal_net.toLocaleString('es-CL')}</span>
-                  </div>
-                  <div className="flex justify-between text-zinc-600">
-                    <span>IVA Débito (19%):</span>
-                    <span className="tabular-nums">${order.iva_amount.toLocaleString('es-CL')}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-xs pt-1 border-t border-zinc-950">
-                    <span>TOTAL CONSUMO:</span>
-                    <span className="tabular-nums">${baseConsumption.toLocaleString('es-CL')}</span>
-                  </div>
-
-                  <div className="pt-2 border-t border-dotted border-zinc-300 space-y-0.5">
-                    <div className="flex justify-between text-zinc-700 font-semibold">
-                      <span>Propina Sugerida (10%):</span>
-                      <span className="tabular-nums">
-                        ${(isPrecuenta ? suggestedTip : order.tip_amount).toLocaleString('es-CL')}
-                      </span>
-                    </div>
-                    <div className="flex justify-between font-black text-sm pt-1 text-zinc-950">
-                      <span>TOTAL CON PROPINA:</span>
-                      <span className="tabular-nums">
-                        ${(baseConsumption + (isPrecuenta ? suggestedTip : order.tip_amount)).toLocaleString('es-CL')}
-                      </span>
-                    </div>
-                  </div>
-
-                  {!isPrecuenta && order.payment_method && (
-                    <div className="pt-2 border-t border-zinc-950 text-[10px] uppercase flex justify-between font-bold">
-                      <span>FORMA DE PAGO:</span>
-                      <span>{order.payment_method}</span>
-                    </div>
-                  )}
+                <div className="flex justify-between">
+                  <span>ATENDIDO POR:</span>
+                  <span className="truncate max-w-[150px] text-right">{order.waiter_name || 'Personal'}</span>
                 </div>
-
-                <div className="mt-4 pt-3 border-t border-dashed border-zinc-400 text-center space-y-1 text-[10px] text-zinc-600">
-                  <p className="italic">
-                    "La propina es voluntaria y corresponde al 10% del consumo total sugerido según Ley 20.918."
-                  </p>
-                  <p className="font-bold uppercase tracking-wider text-zinc-800 pt-1">
-                    ¡Gracias por su visita!
-                  </p>
+                <div className="flex justify-between text-[10px]">
+                  <span>FECHA:</span>
+                  <span>
+                    {printDate.toLocaleDateString('es-CL')} {printDate.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
                 </div>
               </div>
-            ) : null}
-          </div>
 
-          <div className="flex gap-2.5 pt-2 border-t border-zinc-800">
-            <button
-              onClick={handlePrint}
-              disabled={loading}
-              className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition active:scale-95 shadow-lg"
-            >
-              <Printer className="w-4 h-4" /> Imprimir Ticket (80mm)
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold rounded-xl text-xs transition"
-            >
-              Cerrar
-            </button>
-          </div>
+              {/* Listado de Ítems */}
+              <div className="py-2 border-b border-dashed border-black space-y-1.5">
+                <div className="flex justify-between font-black text-[10px] uppercase border-b border-black/30 pb-0.5">
+                  <span className="w-8">CANT</span>
+                  <span className="flex-1 px-1">DETALLE</span>
+                  <span className="text-right w-16">TOTAL</span>
+                </div>
+
+                {items.map((it) => (
+                  <div key={it.id} className="flex justify-between items-start text-[11px] leading-tight">
+                    <span className="w-8 font-black">{it.quantity}x</span>
+                    <span className="flex-1 px-1 break-words">
+                      {it.product?.name || 'Ítem'}
+                    </span>
+                    <span className="text-right w-16 tabular-nums font-semibold">
+                      ${(it.subtotal || it.unit_price * it.quantity).toLocaleString('es-CL')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Totales y Liquidación Tributaria */}
+              <div className="py-2 border-b border-dashed border-black space-y-1 text-[11px]">
+                <div className="flex justify-between">
+                  <span>SUBTOTAL NETO:</span>
+                  <span className="tabular-nums">${Number(order.subtotal_net || 0).toLocaleString('es-CL')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>I.V.A. (19%):</span>
+                  <span className="tabular-nums">${Number(order.iva_amount || 0).toLocaleString('es-CL')}</span>
+                </div>
+
+                {order.tip_amount > 0 && (
+                  <div className="flex justify-between font-bold">
+                    <span>PROPINA SUGERIDA (10%):</span>
+                    <span className="tabular-nums">+${Number(order.tip_amount).toLocaleString('es-CL')}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between text-sm font-black pt-1 border-t border-black">
+                  <span>TOTAL A PAGAR:</span>
+                  <span className="tabular-nums">${Number(order.total_amount || 0).toLocaleString('es-CL')}</span>
+                </div>
+
+                {order.payment_method && (
+                  <div className="flex justify-between text-[10px] pt-1 uppercase">
+                    <span>MEDIO DE PAGO:</span>
+                    <span className="font-bold">{order.payment_method}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Pie con Cortesía */}
+              <div className="text-center pt-3 text-[10px] space-y-1">
+                <p className="font-bold">¡MUCHAS GRACIAS POR SU VISITA!</p>
+                <p>Propina voluntaria según Ley 20.729</p>
+                <div className="pt-2 flex items-center justify-center gap-1 text-black/60">
+                  <Scissors className="w-3 h-3" />
+                  <span>- - - - - - - - - - - - - - - -</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Botones de Acción */}
+        <div className="no-print flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className={`flex-1 py-2.5 rounded-xl border font-bold text-xs cursor-pointer transition ${
+              isDark ? 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-zinc-200' : 'bg-slate-100 border-slate-200 hover:bg-slate-200 text-slate-700'
+            }`}
+          >
+            Cerrar Vista
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePrint}
+            disabled={loading || !order}
+            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-blue-600/20 cursor-pointer"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Imprimir Ticket ({paperWidth})</span>
+          </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
