@@ -205,25 +205,27 @@ export function StaffPortalModal({
     setStep('attendance_verify');
   };
 
-  // Captura con inversión horizontal para preservar el modo selfie natural
+  // Captura con reflejo horizontal para coincidir idénticamente con el visor selfie
   const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
     
-    canvas.width = video.videoWidth || 480;
-    canvas.height = video.videoHeight || 480;
+    const width = video.videoWidth || 480;
+    const height = video.videoHeight || 480;
+    canvas.width = width;
+    canvas.height = height;
 
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.save();
-      // Efecto espejo idéntico al video en vivo
-      ctx.translate(canvas.width, 0);
+      // Espejo idéntico al que ve el usuario en pantalla
+      ctx.translate(width, 0);
       ctx.scale(-1, 1);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, width, height);
       ctx.restore();
 
-      const photoBase64 = canvas.toDataURL('image/jpeg', 0.6);
+      const photoBase64 = canvas.toDataURL('image/jpeg', 0.7);
       setCapturedPhoto(photoBase64);
       stopCamera();
     }
@@ -614,7 +616,7 @@ export function StaffPortalModal({
               </div>
             ) : (
               <div className="space-y-3">
-                {/* Cuadro de Video / Foto: Lo que se ve aquí es exactamente lo que se guarda */}
+                {/* Cuadro de Video / Foto: Idéntico en el preview y al congelar */}
                 <div className="relative w-full aspect-square max-w-[280px] mx-auto rounded-3xl overflow-hidden border-2 border-zinc-800 bg-black flex items-center justify-center shadow-inner">
                   {cameraError ? (
                     <p className="p-4 text-center text-xs text-rose-400">{cameraError}</p>
