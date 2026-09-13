@@ -643,20 +643,25 @@ export function CashRegisterView({ isDark = true }: CashRegisterViewProps) {
         </>
       )}
 
-      {/* MODAL 1: Caja Chica */}
+      {/* MODAL 1: Caja Chica (Adaptado a tema Claro y Oscuro) */}
       {showMovementModal && currentShift && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3">
           <div className={`w-full max-w-sm rounded-3xl p-5 border shadow-2xl space-y-4 ${
             isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
           }`}>
-            <div className="flex items-center justify-between border-b pb-3 border-zinc-800">
+            <div className={`flex items-center justify-between border-b pb-3 ${
+              isDark ? 'border-zinc-800' : 'border-slate-100'
+            }`}>
               <div className="flex items-center gap-2">
                 <ArrowDownCircle className="w-4 h-4 text-amber-500" />
                 <h3 className="font-bold text-sm">Movimiento de Caja Chica</h3>
               </div>
               <button
+                type="button"
                 onClick={() => setShowMovementModal(false)}
-                className="p-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-zinc-100 cursor-pointer"
+                className={`p-1.5 rounded-lg cursor-pointer transition ${
+                  isDark ? 'bg-zinc-800 text-zinc-400 hover:text-zinc-100' : 'bg-slate-100 text-slate-400 hover:text-slate-800'
+                }`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -669,8 +674,8 @@ export function CashRegisterView({ isDark = true }: CashRegisterViewProps) {
                   onClick={() => setMovType('out')}
                   className={`py-2 rounded-xl font-bold border transition cursor-pointer ${
                     movType === 'out'
-                      ? 'bg-rose-500/20 text-rose-400 border-rose-500/40'
-                      : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                      ? 'bg-rose-500/20 text-rose-500 border-rose-500/40'
+                      : isDark ? 'bg-zinc-800 text-zinc-400 border-zinc-700' : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
                   }`}
                 >
                   Gasto / Retiro
@@ -680,8 +685,8 @@ export function CashRegisterView({ isDark = true }: CashRegisterViewProps) {
                   onClick={() => setMovType('in')}
                   className={`py-2 rounded-xl font-bold border transition cursor-pointer ${
                     movType === 'in'
-                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                      : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                      ? 'bg-emerald-500/20 text-emerald-500 border-emerald-500/40'
+                      : isDark ? 'bg-zinc-800 text-zinc-400 border-zinc-700' : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
                   }`}
                 >
                   Ingreso Extra
@@ -689,34 +694,42 @@ export function CashRegisterView({ isDark = true }: CashRegisterViewProps) {
               </div>
 
               <div className="space-y-1">
-                <label className="text-zinc-400">Monto en Efectivo (CLP):</label>
+                <label className={isDark ? 'text-zinc-400' : 'text-slate-600 font-semibold'}>
+                  Monto en Efectivo (CLP):
+                </label>
                 <input
                   type="number"
                   required
                   placeholder="Ej: 8000"
                   value={movAmount}
                   onChange={(e) => setMovAmount(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-zinc-100 text-base font-bold outline-none tabular-nums"
+                  className={`w-full p-2.5 rounded-xl border text-base font-bold outline-none tabular-nums ${
+                    isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-100 focus:border-amber-500' : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-amber-500'
+                  }`}
                   autoFocus
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-zinc-400">Motivo / Justificación:</label>
+                <label className={isDark ? 'text-zinc-400' : 'text-slate-600 font-semibold'}>
+                  Motivo / Justificación:
+                </label>
                 <input
                   type="text"
                   required
                   placeholder="Ej: Compra de limones urgente, Retiro caja fuerte"
                   value={movReason}
                   onChange={(e) => setMovReason(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-zinc-100 text-xs outline-none"
+                  className={`w-full p-2.5 rounded-xl border text-xs outline-none ${
+                    isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-100 focus:border-amber-500' : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-amber-500'
+                  }`}
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={submittingMov}
-                className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl transition cursor-pointer active:scale-95"
+                className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl transition cursor-pointer active:scale-95 shadow-xs"
               >
                 {submittingMov ? 'Registrando...' : 'Confirmar Movimiento'}
               </button>
@@ -725,60 +738,76 @@ export function CashRegisterView({ isDark = true }: CashRegisterViewProps) {
         </div>
       )}
 
-      {/* MODAL 2: Detalle de Boleta */}
+      {/* MODAL 2: Detalle de Boleta (Adaptado a tema Claro y Oscuro) */}
       {selectedOrder && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3">
           <div className={`w-full max-w-sm rounded-3xl p-5 border shadow-2xl space-y-4 ${
             isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
           }`}>
-            <div className="flex items-center justify-between border-b pb-3 border-zinc-800">
+            <div className={`flex items-center justify-between border-b pb-3 ${
+              isDark ? 'border-zinc-800' : 'border-slate-100'
+            }`}>
               <div>
                 <h4 className="font-bold text-sm">Comanda #{selectedOrder.order_number}</h4>
-                <p className="text-[11px] font-mono text-zinc-400">
+                <p className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
                   {new Date(selectedOrder.paid_at).toLocaleString('es-CL')}
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedOrder(null)}
-                className="p-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-zinc-100 cursor-pointer"
+                className={`p-1.5 rounded-lg cursor-pointer transition ${
+                  isDark ? 'bg-zinc-800 text-zinc-400 hover:text-zinc-100' : 'bg-slate-100 text-slate-400 hover:text-slate-800'
+                }`}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="max-h-48 overflow-y-auto space-y-1.5 font-mono text-xs p-2 rounded-xl bg-zinc-950 border border-zinc-800">
+            <div className={`max-h-48 overflow-y-auto space-y-1.5 font-mono text-xs p-2.5 rounded-xl border ${
+              isDark ? 'bg-zinc-950 border-zinc-800 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+            }`}>
               {selectedOrder.order_items?.map((it) => (
-                <div key={it.id} className="flex justify-between items-center py-1 border-b border-zinc-800/60 last:border-0">
+                <div key={it.id} className={`flex justify-between items-center py-1 border-b last:border-0 ${
+                  isDark ? 'border-zinc-800/60' : 'border-slate-200'
+                }`}>
                   <span>
-                    <strong className="text-amber-400">{it.quantity}x</strong> {it.product?.name || 'Ítem'}
+                    <strong className={isDark ? 'text-amber-400' : 'text-amber-600 font-bold'}>{it.quantity}x</strong> {it.product?.name || 'Ítem'}
                   </span>
-                  <span className="tabular-nums">${(Number(it.subtotal) || 0).toLocaleString('es-CL')}</span>
+                  <span className="tabular-nums font-bold">${(Number(it.subtotal) || 0).toLocaleString('es-CL')}</span>
                 </div>
               ))}
             </div>
 
-            <div className="space-y-1 font-mono text-xs border-t border-zinc-800 pt-2 text-zinc-300">
+            <div className={`space-y-1 font-mono text-xs border-t pt-2 ${
+              isDark ? 'border-zinc-800 text-zinc-300' : 'border-slate-200 text-slate-700'
+            }`}>
               <div className="flex justify-between">
-                <span className="text-zinc-400">Neto:</span>
+                <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>Neto:</span>
                 <span>${Number(selectedOrder.subtotal_net || 0).toLocaleString('es-CL')}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-zinc-400">IVA (19%):</span>
+                <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>IVA (19%):</span>
                 <span>${Number(selectedOrder.iva_amount || 0).toLocaleString('es-CL')}</span>
               </div>
-              <div className="flex justify-between text-blue-400">
+              <div className="flex justify-between text-blue-600 dark:text-blue-400 font-semibold">
                 <span>Propina (10%):</span>
                 <span>+${Number(selectedOrder.tip_amount || 0).toLocaleString('es-CL')}</span>
               </div>
-              <div className="flex justify-between font-bold text-sm text-emerald-400 pt-1 border-t border-zinc-800">
+              <div className={`flex justify-between font-bold text-sm text-emerald-600 dark:text-emerald-400 pt-1 border-t ${
+                isDark ? 'border-zinc-800' : 'border-slate-200'
+              }`}>
                 <span>Total Pagado:</span>
                 <span>${Number(selectedOrder.total_amount || 0).toLocaleString('es-CL')}</span>
               </div>
             </div>
 
             <button
+              type="button"
               onClick={() => setSelectedOrder(null)}
-              className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold rounded-xl transition cursor-pointer"
+              className={`w-full py-2 text-xs font-bold rounded-xl transition cursor-pointer border ${
+                isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+              }`}
             >
               Cerrar Detalle
             </button>
