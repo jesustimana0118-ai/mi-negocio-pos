@@ -9,7 +9,8 @@ interface AttendanceRecord {
   id: string;
   type?: string;
   event_type?: string;
-  created_at: string;
+  timestamp?: string;
+  created_at?: string;
   latitude: number | null;
   longitude: number | null;
   accuracy: number | null;
@@ -30,7 +31,7 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>('all');
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(''); // Vacío para ver todas por defecto
   const [activePhotoModal, setActivePhotoModal] = useState<AttendanceRecord | null>(null);
 
   const loadAttendance = async () => {
@@ -42,6 +43,7 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
           id,
           type,
           event_type,
+          timestamp,
           created_at,
           latitude,
           longitude,
@@ -49,12 +51,24 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
           distance_meters,
           photo_base64,
           verified,
-          staff:staff_id ( name, role )
+          staff:staff ( name, role )
         `)
-        .order('created_at', { ascending: false });
+        .order('timestamp', { ascending: false });
 
-      if (error) throw error;
-      setRecords((data as unknown as AttendanceRecord[]) || []);
+      if (error) {
+        // Fallback si la columna timestamp no está indexada como principal
+        const fallback = await supabase
+          .from('staff_attendance')
+          .select('*')
+          .order('id', { ascending: false });
+        if (!fallback.error && fallback.data) {
+          setRecords(fallback.data as unknown as AttendanceRecord[]);
+        } else {
+          throw error;
+        }
+      } else if (data) {
+        setRecords(data as unknown as AttendanceRecord[]);
+      }
     } catch (err: any) {
       console.error('Error cargando libro de asistencia:', err?.message);
     } finally {
@@ -67,18 +81,15 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
   }, []);
 
   const filteredRecords = records.filter((r) => {
-    const recordDate = new Date(r.created_at).toISOString().split('T')[0];
+    const rawDate = r.timestamp || r.created_at;
+    const recordDate = rawDate ? new Date(rawDate).toISOString().split('T')[0] : '';
     const matchDate = selectedDate ? recordDate === selectedDate : true;
     const currentType = r.type || r.event_type || '';
     const matchType = filterType === 'all' ? true : currentType === filterType;
     return matchDate && matchType;
   });
 
-  const totalEntriesToday = records.filter((r) => {
-    const isToday = new Date(r.created_at).toISOString().split('T')[0] === new Date().toISOString().split('T')[0];
-    return isToday && (r.type === 'clock_in' || r.event_type === 'clock_in');
-  }).length;
-
+  const totalEntries = records.filter((r) => r.type === 'clock_in' || r.event_type === 'clock_in').length;
   const totalAlerts = records.filter((r) => (r.distance_meters || 0) > 80).length;
 
   const getEventBadge = (type?: string) => {
@@ -118,14 +129,14 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
 
   return (
     <div className="space-y-4">
-      {/* Tarjetas de Resumen Rápido DT */}
+      {/* Tarjetas de Resumen */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className={`p-4 rounded-2xl border ${
           isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-white border-slate-200'
         } shadow-xs flex items-center justify-between`}>
           <div>
-            <p className="text-[11px] font-mono text-zinc-400 uppercase font-bold tracking-wider">Entradas Hoy</p>
-            <h4 className="text-xl font-black mt-0.5">{totalEntriesToday}</h4>
+            <p className="text-[11px] font-mono text-zinc-400 uppercase font-bold tracking-wider">Total Entradas</p>
+            <h4 className="text-xl font-black mt-0.5">{totalEntries}</h4>
           </div>
           <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
             <CheckCircle2 className="w-5 h-5" />
@@ -165,7 +176,7 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
         </div>
       </div>
 
-      {/* Barra de Filtros */}
+      {/* Filtros */}
       <div className={`p-3.5 rounded-2xl border flex flex-wrap gap-2.5 items-center justify-between ${
         isDark ? 'bg-zinc-950/90 border-zinc-800' : 'bg-white border-slate-200'
       }`}>
@@ -178,6 +189,15 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
               onChange={(e) => setSelectedDate(e.target.value)}
               className="bg-transparent text-zinc-100 focus:outline-hidden font-mono text-xs cursor-pointer"
             />
+            {selectedDate && (
+              <button 
+                type="button" 
+                onClick={() => setSelectedDate('')} 
+                className="text-[10px] text-zinc-400 hover:text-zinc-200 font-mono ml-1 underline cursor-pointer"
+              >
+                Ver todo
+              </button>
+            )}
           </div>
 
           <div className="flex gap-1 overflow-x-auto">
@@ -213,7 +233,7 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
         </button>
       </div>
 
-      {/* Tabla de Registros */}
+      {/* Tabla */}
       <div className={`rounded-2xl border overflow-hidden shadow-xs ${
         isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-white border-slate-200'
       }`}>
@@ -242,20 +262,20 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
               ) : filteredRecords.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-xs text-zinc-500">
-                    No se encontraron marcaciones para los filtros seleccionados.
+                    No hay marcaciones para mostrar con estos filtros.
                   </td>
                 </tr>
               ) : (
                 filteredRecords.map((item) => {
                   const eventType = item.type || item.event_type;
                   const isFar = (item.distance_meters || 0) > 80;
-                  const dateObj = new Date(item.created_at);
+                  const dateVal = item.timestamp || item.created_at;
+                  const dateObj = dateVal ? new Date(dateVal) : new Date();
                   const formattedTime = dateObj.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                   const formattedDate = dateObj.toLocaleDateString('es-CL');
 
                   return (
                     <tr key={item.id} className="hover:bg-zinc-900/40 transition-colors">
-                      {/* Foto */}
                       <td className="py-2.5 px-4">
                         {item.photo_base64 ? (
                           <button
@@ -275,18 +295,15 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
                         )}
                       </td>
 
-                      {/* Colaborador */}
                       <td className="py-2.5 px-4 font-sans">
-                        <p className="font-bold text-zinc-200 text-xs">{item.staff?.name || 'Garzón'}</p>
-                        <p className="text-[10px] text-zinc-400 capitalize font-mono">{item.staff?.role || 'Personal'}</p>
+                        <p className="font-bold text-zinc-200 text-xs">{item.staff?.name || 'Personal'}</p>
+                        <p className="text-[10px] text-zinc-400 capitalize font-mono">{item.staff?.role || 'Operador'}</p>
                       </td>
 
-                      {/* Evento */}
                       <td className="py-2.5 px-4 font-sans">
                         {getEventBadge(eventType)}
                       </td>
 
-                      {/* Timestamp */}
                       <td className="py-2.5 px-4">
                         <div className="flex items-center gap-1.5 text-zinc-200">
                           <Clock className="w-3.5 h-3.5 text-zinc-500" />
@@ -295,20 +312,18 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
                         <span className="text-[10px] text-zinc-500">{formattedDate}</span>
                       </td>
 
-                      {/* Geocerca GPS */}
                       <td className="py-2.5 px-4">
                         <div className="flex items-center gap-1.5">
                           <span className={`w-2 h-2 rounded-full ${isFar ? 'bg-rose-500' : 'bg-emerald-500'}`} />
                           <span className={`text-xs font-bold ${isFar ? 'text-rose-400' : 'text-emerald-400'}`}>
-                            {item.distance_meters !== null ? `${item.distance_meters} metros` : 'En local'}
+                            {item.distance_meters !== null ? `${item.distance_meters} m` : 'En local'}
                           </span>
                         </div>
                         <span className="text-[10px] text-zinc-500 block">
-                          {isFar ? '⚠️ Fuera del local' : 'Certificado dentro del radio'}
+                          {isFar ? '⚠️ Fuera de radio' : 'Certificado en local'}
                         </span>
                       </td>
 
-                      {/* Enlace a Google Maps */}
                       <td className="py-2.5 px-4 text-center">
                         {item.latitude && item.longitude ? (
                           <a
@@ -316,7 +331,6 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition text-[11px] font-sans"
-                            title="Ver en Google Maps"
                           >
                             <MapPin className="w-3 h-3 text-blue-400" />
                             <span>Mapa</span>
@@ -335,7 +349,7 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
         </div>
       </div>
 
-      {/* Modal de Vista de Fotografía en Alta Resolución */}
+      {/* Modal Foto */}
       {activePhotoModal && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl">
@@ -343,7 +357,7 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
               <div>
                 <h4 className="font-bold text-sm text-zinc-100">{activePhotoModal.staff?.name || 'Personal'}</h4>
                 <p className="text-[11px] font-mono text-zinc-400">
-                  {new Date(activePhotoModal.created_at).toLocaleString('es-CL')}
+                  {activePhotoModal.timestamp ? new Date(activePhotoModal.timestamp).toLocaleString('es-CL') : ''}
                 </p>
               </div>
               <button
@@ -359,7 +373,7 @@ export function StaffAttendanceAudit({ isDark = false }: StaffAttendanceAuditPro
               {activePhotoModal.photo_base64 && (
                 <img
                   src={activePhotoModal.photo_base64}
-                  alt="Selfie de Asistencia"
+                  alt="Selfie"
                   className="w-full h-full object-cover"
                 />
               )}
