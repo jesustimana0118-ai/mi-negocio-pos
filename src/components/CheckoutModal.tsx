@@ -51,10 +51,9 @@ export function CheckoutModal({
   onPaymentSuccess, 
   isDark = true 
 }: CheckoutModalProps) {
-  // Modalidad: Pago Total vs Dividir Cuenta
   const [payMode, setPayMode] = useState<'full' | 'split'>('full');
 
-  // Pago Total Tradicional
+  // Pago Total
   const [method, setMethod] = useState<PaymentOption>('card_debit');
   const [cashReceived, setCashReceived] = useState<string>('');
   const [processing, setProcessing] = useState(false);
@@ -81,7 +80,6 @@ export function CheckoutModal({
   const remainingBalance = Math.max(0, finalTotal - totalPaidSoFar);
   const suggestedQuota = Math.ceil(finalTotal / splitCount);
 
-  // Si cambia el total o la cantidad de personas, predefinimos el input con la cuota o el saldo restante
   useEffect(() => {
     if (remainingBalance > 0) {
       const quota = Math.min(remainingBalance, suggestedQuota);
@@ -91,7 +89,6 @@ export function CheckoutModal({
     }
   }, [splitCount, remainingBalance, suggestedQuota]);
 
-  // Vuelto en efectivo para pago total
   const receivedNum = Number(cashReceived) || 0;
   const change = receivedNum > finalTotal ? receivedNum - finalTotal : 0;
 
@@ -117,7 +114,6 @@ export function CheckoutModal({
     fetchOrderItems();
   }, [order.id]);
 
-  // Agregar un abono en modo Split
   const handleAddPartialPayment = () => {
     const amountNum = parseFloat(currentPartialAmount);
     if (isNaN(amountNum) || amountNum <= 0) return;
@@ -148,15 +144,10 @@ export function CheckoutModal({
   const handleProcessPayment = async () => {
     setProcessing(true);
     try {
-      // Determinar método registrado final
       let finalMethod: string = method;
       if (payMode === 'split') {
         const uniqueMethods = Array.from(new Set(partialPayments.map((p) => p.method)));
-        if (uniqueMethods.length === 1) {
-          finalMethod = uniqueMethods[0];
-        } else {
-          finalMethod = 'split';
-        }
+        finalMethod = uniqueMethods.length === 1 ? uniqueMethods[0] : 'split';
       }
 
       const { error: orderError } = await supabase
@@ -181,7 +172,9 @@ export function CheckoutModal({
 
       onPaymentSuccess();
     } catch (err: any) {
-      alert('Error al liquidar la cuenta: ' + (err instanceof Error ? err.message : 'Error de red'));
+      console.error('Error detallado al liquidar:', err);
+      const detail = err?.message || err?.error_description || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+      alert('Error al liquidar la cuenta: ' + detail);
     } finally {
       setProcessing(false);
     }
@@ -224,7 +217,7 @@ export function CheckoutModal({
           </button>
         </div>
 
-        {/* Selector de Modalidad: Pago Total vs Dividir Cuenta */}
+        {/* Selector de Modalidad */}
         <div className={`grid grid-cols-2 p-1 rounded-xl border shrink-0 ${
           isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-100 border-slate-200'
         }`}>
@@ -352,7 +345,7 @@ export function CheckoutModal({
           </div>
         </div>
 
-        {/* --- OPCIÓN A: PAGO COMPLETO TRADICIONAL --- */}
+        {/* --- OPCIÓN A: PAGO COMPLETO --- */}
         {payMode === 'full' && (
           <div className="space-y-3">
             <div className="space-y-1">
@@ -472,10 +465,10 @@ export function CheckoutModal({
               isDark ? 'bg-zinc-950/70 border-zinc-800' : 'bg-slate-50 border-slate-200'
             }`}>
               <div className="flex items-center justify-between text-xs">
-                <span className="font-bold flex items-center gap-1.5 text-zinc-300">
-                  <Users className="w-3.5 h-3.5 text-purple-400" /> Dividir entre comensales:
+                <span className={`font-bold flex items-center gap-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
+                  <Users className="w-3.5 h-3.5 text-purple-500" /> Dividir entre comensales:
                 </span>
-                <span className="text-purple-400 font-bold">
+                <span className="text-purple-600 dark:text-purple-400 font-bold">
                   {splitCount} pers. (${suggestedQuota.toLocaleString('es-CL')} c/u)
                 </span>
               </div>
@@ -489,7 +482,7 @@ export function CheckoutModal({
                     className={`flex-1 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
                       splitCount === num
                         ? 'bg-purple-600 text-white border-purple-500 shadow-xs'
-                        : isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white' : 'bg-white border-slate-200 text-slate-700'
+                        : isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
                     {num}
@@ -504,11 +497,13 @@ export function CheckoutModal({
                 isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-slate-200 shadow-xs'
               }`}>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-zinc-300">Cobrar Abono / Cuota:</span>
+                  <span className={`font-bold ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
+                    Cobrar Abono / Cuota:
+                  </span>
                   <button
                     type="button"
                     onClick={() => setCurrentPartialAmount(remainingBalance.toString())}
-                    className="text-[10px] text-blue-400 hover:underline cursor-pointer"
+                    className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline cursor-pointer font-bold"
                   >
                     Pagar Restante Total
                   </button>
@@ -516,7 +511,9 @@ export function CheckoutModal({
 
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-zinc-400">Monto del Abono:</label>
+                    <label className={`text-[10px] ${isDark ? 'text-zinc-400' : 'text-slate-500 font-semibold'}`}>
+                      Monto del Abono:
+                    </label>
                     <input
                       type="number"
                       value={currentPartialAmount}
@@ -528,7 +525,9 @@ export function CheckoutModal({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-zinc-400">Medio de Pago:</label>
+                    <label className={`text-[10px] ${isDark ? 'text-zinc-400' : 'text-slate-500 font-semibold'}`}>
+                      Medio de Pago:
+                    </label>
                     <select
                       value={currentPartialMethod}
                       onChange={(e) => setCurrentPartialMethod(e.target.value as PaymentOption)}
@@ -557,33 +556,49 @@ export function CheckoutModal({
             {/* Listado de Abonos Realizados */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-zinc-400">Abonos Registrados ({partialPayments.length}):</span>
-                <span className="font-bold text-emerald-400 tabular-nums">
+                <span className={`font-bold ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
+                  Abonos Registrados ({partialPayments.length}):
+                </span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
                   Pagado: ${totalPaidSoFar.toLocaleString('es-CL')}
                 </span>
               </div>
 
               {partialPayments.length === 0 ? (
-                <div className="p-3 text-center text-xs text-zinc-500 border border-dashed rounded-xl border-zinc-800">
+                <div className={`p-3 text-center text-xs border border-dashed rounded-xl ${
+                  isDark ? 'border-zinc-800 text-zinc-500' : 'border-slate-300 text-slate-400'
+                }`}>
                   Aún no se registran pagos parciales para esta cuenta.
                 </div>
               ) : (
-                <div className="space-y-1 max-h-28 overflow-y-auto">
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
                   {partialPayments.map((p, idx) => (
                     <div
                       key={p.id}
-                      className={`flex items-center justify-between p-2 rounded-xl border text-xs ${
-                        isDark ? 'bg-zinc-950/70 border-zinc-800' : 'bg-slate-50 border-slate-200'
+                      className={`flex items-center justify-between p-2.5 rounded-xl border text-xs transition-all ${
+                        isDark 
+                          ? 'bg-zinc-950/70 border-zinc-800' 
+                          : 'bg-white border-slate-200 shadow-2xs'
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="w-4 h-4 rounded-full bg-purple-500/20 text-purple-400 text-[10px] flex items-center justify-center font-bold">
+                        <span className="w-5 h-5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 text-[10px] flex items-center justify-center font-black">
                           {idx + 1}
                         </span>
-                        <span className="font-bold text-zinc-200">
+                        
+                        {/* Monto legible con contraste óptimo */}
+                        <span className={`font-bold font-mono tabular-nums ${
+                          isDark ? 'text-zinc-100' : 'text-slate-900'
+                        }`}>
                           ${p.amount.toLocaleString('es-CL')}
                         </span>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded border bg-zinc-800 border-zinc-700 text-zinc-300">
+
+                        {/* Etiqueta adaptada sin bloque negro */}
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                          isDark 
+                            ? 'bg-zinc-800 border-zinc-700 text-zinc-200' 
+                            : 'bg-purple-50 border-purple-200 text-purple-700'
+                        }`}>
                           {p.label}
                         </span>
                       </div>
@@ -591,7 +606,11 @@ export function CheckoutModal({
                       <button
                         type="button"
                         onClick={() => handleRemovePartialPayment(p.id)}
-                        className="p-1 text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+                        className={`p-1 rounded-lg transition cursor-pointer ${
+                          isDark 
+                            ? 'text-rose-400 hover:bg-rose-500/10' 
+                            : 'text-rose-600 hover:bg-rose-50'
+                        }`}
                         title="Eliminar este abono"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -602,11 +621,15 @@ export function CheckoutModal({
               )}
             </div>
 
-            {/* Estado del Saldo Pendiente */}
+            {/* Saldo Pendiente */}
             <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold ${
               remainingBalance === 0
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                ? isDark
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : isDark
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                : 'bg-amber-50 border-amber-200 text-amber-800'
             }`}>
               <span>Saldo Pendiente:</span>
               <span className="text-sm font-black tabular-nums">
@@ -614,7 +637,7 @@ export function CheckoutModal({
               </span>
             </div>
 
-            {/* Botón Final cuando la cuenta está completamente pagada */}
+            {/* Botón Final */}
             <button
               type="button"
               disabled={remainingBalance > 0 || processing}
