@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { ShiftClosingModal } from './ShiftClosingModal';
+import { CashReportModal } from './CashReportModal';
 import { 
   DollarSign, Lock, Unlock, Receipt, CreditCard, 
   ArrowDownCircle, Clock, User, Eye, 
   CheckCircle2, X, RefreshCw, 
-  ShoppingBag, Landmark
+  ShoppingBag, Landmark, Printer
 } from 'lucide-react';
 
 interface CurrentShift {
@@ -70,6 +71,7 @@ export function CashRegisterView({ isDark = true }: CashRegisterViewProps) {
 
   // Modales
   const [showClosingModal, setShowClosingModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<PaidOrder | null>(null);
 
@@ -254,7 +256,7 @@ export function CashRegisterView({ isDark = true }: CashRegisterViewProps) {
 
   // Métricas visibles para el cajero
   const cardSales = paidOrders
-    .filter((o) => o.payment_method === 'card' || o.payment_method === 'debit' || o.payment_method === 'credit')
+    .filter((o) => o.payment_method === 'card' || o.payment_method === 'card_debit' || o.payment_method === 'card_credit' || o.payment_method === 'debit' || o.payment_method === 'credit')
     .reduce((acc, o) => acc + (Number(o.total_amount) || 0), 0);
 
   const transferSales = paidOrders
@@ -299,6 +301,20 @@ export function CashRegisterView({ isDark = true }: CashRegisterViewProps) {
               >
                 <ArrowDownCircle className="w-3.5 h-3.5 text-amber-500" />
                 <span>Caja Chica (Gastos)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowReportModal(true)}
+                className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer ${
+                  isDark 
+                    ? 'bg-blue-950/40 hover:bg-blue-900/60 text-blue-300 border-blue-800/80' 
+                    : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200 shadow-xs'
+                }`}
+                title="Generar e imprimir Reporte Z térmico"
+              >
+                <Printer className="w-3.5 h-3.5 text-blue-500" />
+                <span>Reporte Z</span>
               </button>
 
               <button
@@ -545,10 +561,12 @@ export function CashRegisterView({ isDark = true }: CashRegisterViewProps) {
 
                       const method = order.payment_method || 'cash';
                       const methodLabel =
-                        method === 'card' || method === 'debit' || method === 'credit'
+                        method === 'card' || method === 'card_debit' || method === 'card_credit' || method === 'debit' || method === 'credit'
                           ? 'Tarjeta'
                           : method === 'transfer'
                           ? 'Transferencia'
+                          : method === 'split'
+                          ? 'Dividida'
                           : 'Efectivo';
 
                       return (
@@ -582,6 +600,8 @@ export function CashRegisterView({ isDark = true }: CashRegisterViewProps) {
                                 ? 'bg-violet-500/10 text-violet-400 border-violet-500/30'
                                 : methodLabel === 'Transferencia'
                                 ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                                : methodLabel === 'Dividida'
+                                ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
                                 : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                             }`}>
                               {methodLabel}
@@ -775,6 +795,20 @@ export function CashRegisterView({ isDark = true }: CashRegisterViewProps) {
             setShowClosingModal(false);
             loadCashData();
           }}
+        />
+      )}
+
+      {/* MODAL 4: Reporte Z Térmico & Arqueo */}
+      {showReportModal && currentShift && (
+        <CashReportModal
+          shift={{
+            id: currentShift.id,
+            cashier_name: currentShift.cashier_name || 'Cajero',
+            initial_cash: currentShift.initial_cash,
+            opened_at: currentShift.opened_at,
+          }}
+          onClose={() => setShowReportModal(false)}
+          isDark={isDark}
         />
       )}
     </div>
