@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabase';
 import type { RestaurantTable } from '../types/database';
 import { 
   Users, Clock, Receipt, RefreshCw, 
-  LayoutGrid, Plus, Trash2, X, Armchair, ShoppingBag, ArrowRight
+  LayoutGrid, Plus, Trash2, X, Armchair, ShoppingBag, 
+  ArrowRight, ArrowRightLeft, GitMerge, MoveRight
 } from 'lucide-react';
 
 interface OpenTakeoutOrder {
@@ -34,16 +35,19 @@ export function TablesView({
   const [takeoutOrders, setTakeoutOrders] = useState<OpenTakeoutOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Estados del modal de nueva mesa
+  // Modal Crear Mesa
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tableNumber, setTableNumber] = useState('');
   const [tableName, setTableName] = useState('');
   const [tableCapacity, setTableCapacity] = useState('4');
   const [submitting, setSubmitting] = useState(false);
 
+  // Modal Mover / Juntar Mesa
+  const [transferSourceTable, setTransferSourceTable] = useState<RestaurantTable | null>(null);
+  const [transferLoading, setTransferLoading] = useState(false);
+
   async function loadData() {
     setLoading(true);
-    // 1. Cargar Mesas
     const { data: tablesData } = await supabase
       .from('restaurant_tables')
       .select('*')
@@ -53,7 +57,6 @@ export function TablesView({
       setTables(tablesData as RestaurantTable[]);
     }
 
-    // 2. Cargar Pedidos Para Llevar Activos (table_id null y status open)
     const { data: takeoutsData } = await supabase
       .from('orders')
       .select('id, order_number, waiter_name, subtotal_net, iva_amount, tip_amount, total_amount, created_at')
@@ -179,6 +182,113 @@ export function TablesView({
     }
   };
 
+  // Ejecuta la transferencia o fusión de mesas
+  const handleExecuteTransferOrMerge = async (targetTable: RestaurantTable) => {
+    if (!transferSourceTable || transferSourceTable.id === targetTable.id) return;
+
+    const isMerge = targetTable.status === 'occupied';
+    const actionText = isMerge ? 'fusionar con' : 'mover a';
+    const confirmed = window.confirm(
+      `¿Confirmas ${actionText} "${targetTable.name}" (#${targetTable.table_number})?`
+    );
+    if (!confirmed) return;
+
+    setTransferLoading(true);
+
+    try {
+      // 1. Obtener la comanda abierta de la mesa de origen
+      const { data: sourceOrder, error: srcOrderErr } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('table_id', transferSourceTable.id)
+        .eq('status', 'open')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (srcOrderErr || !sourceOrder) {
+        throw new Error('No se encontró una comanda abierta en la mesa de origen.');
+      }
+
+      if (isMerge) {
+        // --- CASO 1: FUSIÓN DE MESAS OCUPADAS ---
+        const { data: targetOrder, error: targetOrderErr } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('table_id', targetTable.id)
+          .eq('status', 'open')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (targetOrderErr || !targetOrder) {
+          throw new Error('No se encontró la comanda abierta de la mesa destino para fusionar.');
+        }
+
+        // Mover todos los platos de la comanda de origen a la comanda de destino
+        const { error: moveItemsErr } = await supabase
+          .from('order_items')
+          .update({ order_id: targetOrder.id })
+          .eq('order_id', sourceOrder.id);
+
+        if (moveItemsErr) throw moveItemsErr;
+
+        // Sumar y actualizar totales consolidados en la comanda de destino
+        const newSubtotalNet = (Number(targetOrder.subtotal_net) || 0) + (Number(sourceOrder.subtotal_net) || 0);
+        const newIva = (Number(targetOrder.iva_amount) || 0) + (Number(sourceOrder.iva_amount) || 0);
+        const newTip = (Number(targetOrder.tip_amount) || 0) + (Number(sourceOrder.tip_amount) || 0);
+        const newTotal = (Number(targetOrder.total_amount) || 0) + (Number(sourceOrder.total_amount) || 0);
+
+        await supabase
+          .from('orders')
+          .update({
+            subtotal_net: newSubtotalNet,
+            iva_amount: newIva,
+            tip_amount: newTip,
+            total_amount: newTotal,
+          })
+          .eq('id', targetOrder.id);
+
+        // Eliminar la orden vacía de origen
+        await supabase.from('orders').delete().eq('id', sourceOrder.id);
+
+        // Liberar la mesa de origen
+        await supabase
+          .from('restaurant_tables')
+          .update({ status: 'available' })
+          .eq('id', transferSourceTable.id);
+
+      } else {
+        // --- CASO 2: MOVER CUENTA A MESA VACÍA ---
+        // Reasignar la comanda al nuevo table_id
+        const { error: transferErr } = await supabase
+          .from('orders')
+          .update({ table_id: targetTable.id })
+          .eq('id', sourceOrder.id);
+
+        if (transferErr) throw transferErr;
+
+        // Liberar mesa de origen y ocupar mesa de destino
+        await supabase
+          .from('restaurant_tables')
+          .update({ status: 'available' })
+          .eq('id', transferSourceTable.id);
+
+        await supabase
+          .from('restaurant_tables')
+          .update({ status: 'occupied' })
+          .eq('id', targetTable.id);
+      }
+
+      setTransferSourceTable(null);
+      await loadData();
+    } catch (err: any) {
+      alert('Error en la operación: ' + (err?.message || 'Error de base de datos'));
+    } finally {
+      setTransferLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Cabecera del Salón */}
@@ -197,6 +307,7 @@ export function TablesView({
 
         <div className="flex items-center gap-2 shrink-0">
           <button
+            type="button"
             onClick={onNewTakeoutOrder}
             className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-violet-500/20 cursor-pointer"
           >
@@ -204,6 +315,7 @@ export function TablesView({
           </button>
 
           <button
+            type="button"
             onClick={handleOpenCreateModal}
             className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 border cursor-pointer ${
               isDark
@@ -215,6 +327,7 @@ export function TablesView({
           </button>
 
           <button
+            type="button"
             onClick={loadData}
             disabled={loading}
             className={`p-2 rounded-xl border transition-all active:scale-95 shadow-xs cursor-pointer ${
@@ -256,6 +369,7 @@ export function TablesView({
               return (
                 <button
                   key={order.id}
+                  type="button"
                   onClick={() => onSelectTakeoutOrder(order)}
                   className={`p-3 rounded-xl border text-left transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between ${
                     isDark
@@ -357,6 +471,25 @@ export function TablesView({
                       {table.capacity}
                     </span>
 
+                    {/* Botón de Mover/Juntar Mesa (solo mesas ocupadas) */}
+                    {isOccupied && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTransferSourceTable(table);
+                        }}
+                        className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                          isDark 
+                            ? 'bg-zinc-800 hover:bg-zinc-700 text-amber-400 border-zinc-700' 
+                            : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-200'
+                        }`}
+                        title="Mover comanda o juntar con otra mesa"
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
                     {isAvailable && (
                       <button
                         type="button"
@@ -405,7 +538,108 @@ export function TablesView({
         </div>
       )}
 
-      {/* Modal Nueva Mesa */}
+      {/* MODAL 1: Mover o Juntar Mesa */}
+      {transferSourceTable && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3">
+          <div className={`w-full max-w-md rounded-3xl p-5 border shadow-2xl space-y-4 ${
+            isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            <div className={`flex items-center justify-between border-b pb-3 ${
+              isDark ? 'border-zinc-800' : 'border-slate-100'
+            }`}>
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                  <ArrowRightLeft className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm">
+                    Reasignar: {transferSourceTable.name} (#{transferSourceTable.table_number})
+                  </h3>
+                  <p className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+                    Elige el destino para mover la cuenta o juntar mesas
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setTransferSourceTable(null)}
+                className={`p-1.5 rounded-lg transition cursor-pointer ${
+                  isDark ? 'text-zinc-400 hover:text-zinc-100 bg-zinc-800' : 'text-slate-400 hover:text-slate-800 bg-slate-100'
+                }`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Listado de mesas destino */}
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {tables
+                .filter((t) => t.id !== transferSourceTable.id)
+                .map((target) => {
+                  const isAvailable = target.status === 'available';
+
+                  return (
+                    <button
+                      key={target.id}
+                      type="button"
+                      disabled={transferLoading}
+                      onClick={() => handleExecuteTransferOrMerge(target)}
+                      className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all active:scale-[0.98] cursor-pointer ${
+                        isAvailable
+                          ? isDark
+                            ? 'bg-zinc-950 border-emerald-500/30 hover:border-emerald-500/70 hover:bg-emerald-500/5'
+                            : 'bg-emerald-50/40 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50/80 shadow-xs'
+                          : isDark
+                          ? 'bg-zinc-950 border-amber-500/30 hover:border-amber-500/70 hover:bg-amber-500/5'
+                          : 'bg-amber-50/40 border-amber-200 hover:border-amber-400 hover:bg-amber-50/80 shadow-xs'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs border ${
+                          isAvailable
+                            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                            : 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+                        }`}>
+                          #{target.table_number}
+                        </span>
+                        <div>
+                          <p className={`text-xs font-bold ${isDark ? 'text-zinc-200' : 'text-slate-800'}`}>
+                            {target.name}
+                          </p>
+                          <p className={`text-[10px] font-mono ${isDark ? 'text-zinc-500' : 'text-slate-500'}`}>
+                            Capacidad: {target.capacity} pers.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-xs font-bold font-mono">
+                        {isAvailable ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                            <MoveRight className="w-3.5 h-3.5" /> Mover Aquí
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
+                            <GitMerge className="w-3.5 h-3.5" /> Fusionar
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+            </div>
+
+            <div className={`p-3 rounded-xl border text-[11px] font-mono ${
+              isDark ? 'bg-zinc-950/70 border-zinc-800 text-zinc-400' : 'bg-slate-50 border-slate-200 text-slate-600'
+            }`}>
+              💡 <strong>Mover:</strong> Pasa la cuenta a una mesa vacía. <br />
+              💡 <strong>Fusionar:</strong> Agrupa los platos con otra mesa ocupada y libera esta.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: Nueva Mesa */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3">
           <div className={`w-full max-w-sm rounded-2xl p-5 shadow-2xl space-y-4 border transition-all ${
@@ -421,6 +655,7 @@ export function TablesView({
                 <h3 className="font-extrabold text-sm">Configurar Nueva Mesa</h3>
               </div>
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
                 className={`p-1 rounded-lg transition cursor-pointer ${
                   isDark ? 'text-zinc-400 hover:text-zinc-100' : 'text-slate-400 hover:text-slate-800'
