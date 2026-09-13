@@ -94,7 +94,7 @@ export function CashReportModal({
     .reduce((acc, o) => acc + (Number(o.total_amount) || 0), 0);
 
   const cardSales = orders
-    .filter((o) => o.payment_method === 'card_debit' || o.payment_method === 'card_credit' || o.payment_method === 'card')
+    .filter((o) => o.payment_method === 'card_debit' || o.payment_method === 'card_credit' || o.payment_method === 'card' || o.payment_method === 'debit' || o.payment_method === 'credit')
     .reduce((acc, o) => acc + (Number(o.total_amount) || 0), 0);
 
   const transferSales = orders
@@ -109,19 +109,15 @@ export function CashReportModal({
   const totalExpenses = expenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
   const expectedCashInDrawer = shift.initial_cash + cashSales - totalExpenses;
 
-  // Arqueo: Comparación con lo contado
+  // Arqueo
   const countedNum = parseFloat(declaredCash);
   const hasCounted = !isNaN(countedNum);
   const cashDifference = hasCounted ? countedNum - expectedCashInDrawer : 0;
 
-  // Impresión térmica aislada (1 sola página)
+  // Impresión térmica con estilos CSS directos
   const handlePrint = () => {
     const reportEl = document.getElementById('thermal-z-report');
     if (!reportEl) return;
-
-    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-      .map((el) => el.outerHTML)
-      .join('\n');
 
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
@@ -142,32 +138,70 @@ export function CashReportModal({
         <head>
           <meta charset="utf-8" />
           <title>Reporte Z - Cierre de Caja</title>
-          ${styles}
           <style>
             @page {
               size: ${paperWidth === '80mm' ? '80mm' : '58mm'} auto;
               margin: 0mm !important;
             }
-            html, body {
+            * {
+              box-sizing: border-box;
+              margin: 0;
+              padding: 0;
+              font-family: 'Courier New', Courier, monospace !important;
+            }
+            body {
               margin: 0 !important;
-              padding: 0 !important;
+              padding: 4mm 2mm !important;
               background: #ffffff !important;
               color: #000000 !important;
-              width: 100% !important;
-              height: auto !important;
-            }
-            .thermal-print-wrapper {
               width: ${paperWidth === '80mm' ? '74mm' : '48mm'} !important;
-              margin: 0 auto !important;
-              padding: 2mm 1mm !important;
-              box-sizing: border-box !important;
+              font-size: ${paperWidth === '80mm' ? '12px' : '10px'};
+              line-height: 1.3;
+            }
+            .p-center { text-align: center; }
+            .p-right { text-align: right; }
+            .p-bold { font-weight: bold; }
+            .p-black { font-weight: 900; }
+            .p-row {
+              display: flex !important;
+              justify-content: space-between !important;
+              align-items: center !important;
+              margin-bottom: 2px;
+            }
+            .p-divider {
+              border-bottom: 1px dashed #000;
+              margin: 5px 0;
+            }
+            .p-solid {
+              border-bottom: 1px solid #000;
+              margin: 5px 0;
+            }
+            .p-title {
+              font-size: ${paperWidth === '80mm' ? '14px' : '12px'};
+              font-weight: 900;
+              letter-spacing: 0.5px;
+              text-transform: uppercase;
+            }
+            .p-section {
+              font-size: ${paperWidth === '80mm' ? '10px' : '9px'};
+              font-weight: bold;
+              border-bottom: 1px solid #444;
+              padding-bottom: 2px;
+              margin-bottom: 4px;
+              text-transform: uppercase;
+            }
+            .p-sig-box {
+              border-top: 1px solid #000;
+              width: 150px;
+              margin: 32px auto 0 auto;
+              padding-top: 3px;
+              text-align: center;
+              font-size: 9px;
             }
           </style>
         </head>
         <body>
-          <div class="thermal-print-wrapper">
-            ${reportEl.innerHTML}
-          </div>
+          ${reportEl.innerHTML}
         </body>
       </html>
     `);
@@ -193,7 +227,9 @@ export function CashReportModal({
         isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
       }`}>
         {/* Cabecera */}
-        <div className="flex items-center justify-between border-b pb-3 border-zinc-800 shrink-0">
+        <div className={`flex items-center justify-between border-b pb-3 shrink-0 ${
+          isDark ? 'border-zinc-800' : 'border-slate-100'
+        }`}>
           <div className="flex items-center gap-2.5">
             <span className="p-2 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20">
               <Receipt className="w-5 h-5" />
@@ -258,7 +294,7 @@ export function CashReportModal({
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-3">
-            <div className="relative w-full sm:w-60">
+            <div className="relative w-full sm:w-64">
               <span className="absolute left-3 top-2 text-zinc-400 font-bold">$</span>
               <input
                 type="number"
@@ -297,7 +333,9 @@ export function CashReportModal({
         </div>
 
         {/* Visor Térmico del Reporte Z */}
-        <div className="flex-1 overflow-y-auto flex justify-center py-2 bg-zinc-950/40 rounded-2xl border border-zinc-800/80 p-3">
+        <div className={`flex-1 overflow-y-auto flex justify-center py-2 rounded-2xl border p-3 ${
+          isDark ? 'bg-zinc-950/40 border-zinc-800/80' : 'bg-slate-100 border-slate-200'
+        }`}>
           {loading ? (
             <div className="flex items-center gap-2 text-xs font-mono text-zinc-400 py-16">
               <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
@@ -312,93 +350,99 @@ export function CashReportModal({
               style={{ fontFamily: "'Courier New', Courier, monospace" }}
             >
               {/* Encabezado */}
-              <div className="text-center space-y-0.5 border-b border-dashed border-black pb-2 mb-2">
-                <h2 className="text-sm font-black tracking-wider uppercase">MI NEGOCIO POS</h2>
-                <p className="text-[10px]">CIERRE DE TURNO Y ARQUEO DE CAJA</p>
-                <p className="text-[10px] font-bold">*** REPORTE Z DE CONTROL INTERNO ***</p>
+              <div className="p-center" style={{ marginBottom: '6px' }}>
+                <h2 className="p-title">MI NEGOCIO POS</h2>
+                <p style={{ fontSize: '10px' }}>CIERRE DE TURNO Y ARQUEO DE CAJA</p>
+                <p style={{ fontSize: '10px', fontWeight: 'bold' }}>*** REPORTE Z DE CONTROL INTERNO ***</p>
               </div>
 
+              <div className="p-divider" />
+
               {/* Datos del Turno */}
-              <div className="space-y-0.5 text-[11px] pb-2 border-b border-dashed border-black">
-                <div className="flex justify-between">
+              <div style={{ fontSize: '11px', marginBottom: '6px' }}>
+                <div className="p-row">
                   <span>CAJERO:</span>
-                  <span className="font-bold uppercase truncate max-w-[150px] text-right">{shift.cashier_name}</span>
+                  <span className="p-bold">{shift.cashier_name}</span>
                 </div>
-                <div className="flex justify-between text-[10px]">
+                <div className="p-row" style={{ fontSize: '10px' }}>
                   <span>APERTURA:</span>
                   <span>{openedDate.toLocaleDateString('es-CL')} {openedDate.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
-                <div className="flex justify-between text-[10px]">
+                <div className="p-row" style={{ fontSize: '10px' }}>
                   <span>CIERRE/EMISIÓN:</span>
                   <span>{currentDate.toLocaleDateString('es-CL')} {currentDate.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
-                <div className="flex justify-between font-bold">
+                <div className="p-row p-bold">
                   <span>BOLETAS COBRADAS:</span>
                   <span>{totalSalesCount} transacciones</span>
                 </div>
               </div>
 
+              <div className="p-divider" />
+
               {/* Resumen de Ventas por Medio de Pago */}
-              <div className="py-2 border-b border-dashed border-black space-y-1 text-[11px]">
-                <p className="font-black text-[10px] uppercase border-b border-black/30 pb-0.5">
-                  1. VENTAS POR MEDIO DE PAGO
-                </p>
-                <div className="flex justify-between">
+              <div style={{ marginBottom: '6px' }}>
+                <p className="p-section">1. VENTAS POR MEDIO DE PAGO</p>
+                <div className="p-row">
                   <span>(+) EFECTIVO:</span>
-                  <span className="tabular-nums font-bold">${cashSales.toLocaleString('es-CL')}</span>
+                  <span className="p-bold">${cashSales.toLocaleString('es-CL')}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="p-row">
                   <span>(+) TARJETAS (POS):</span>
-                  <span className="tabular-nums font-bold">${cardSales.toLocaleString('es-CL')}</span>
+                  <span className="p-bold">${cardSales.toLocaleString('es-CL')}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="p-row">
                   <span>(+) TRANSFERENCIAS:</span>
-                  <span className="tabular-nums font-bold">${transferSales.toLocaleString('es-CL')}</span>
+                  <span className="p-bold">${transferSales.toLocaleString('es-CL')}</span>
                 </div>
                 {splitSales > 0 && (
-                  <div className="flex justify-between">
+                  <div className="p-row">
                     <span>(+) CUENTAS DIVIDIDAS:</span>
-                    <span className="tabular-nums font-bold">${splitSales.toLocaleString('es-CL')}</span>
+                    <span className="p-bold">${splitSales.toLocaleString('es-CL')}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm font-black pt-1 border-t border-black">
+                <div className="p-solid" />
+                <div className="p-row p-black" style={{ fontSize: '13px' }}>
                   <span>TOTAL VENTA BRUTA:</span>
-                  <span className="tabular-nums">${grossSales.toLocaleString('es-CL')}</span>
+                  <span>${grossSales.toLocaleString('es-CL')}</span>
                 </div>
               </div>
 
+              <div className="p-divider" />
+
               {/* Arqueo de Efectivo en Gaveta */}
-              <div className="py-2 border-b border-dashed border-black space-y-1 text-[11px]">
-                <p className="font-black text-[10px] uppercase border-b border-black/30 pb-0.5">
-                  2. ARQUEO DE EFECTIVO (GAVETA)
-                </p>
-                <div className="flex justify-between">
+              <div style={{ marginBottom: '6px' }}>
+                <p className="p-section">2. ARQUEO DE EFECTIVO (GAVETA)</p>
+                <div className="p-row">
                   <span>(+) SENCILLO INICIAL:</span>
-                  <span className="tabular-nums">${shift.initial_cash.toLocaleString('es-CL')}</span>
+                  <span>${shift.initial_cash.toLocaleString('es-CL')}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="p-row">
                   <span>(+) VENTAS EFECTIVO:</span>
-                  <span className="tabular-nums">${cashSales.toLocaleString('es-CL')}</span>
+                  <span>${cashSales.toLocaleString('es-CL')}</span>
                 </div>
-                <div className="flex justify-between text-rose-600 font-semibold">
+                <div className="p-row" style={{ color: '#b91c1c', fontWeight: 'bold' }}>
                   <span>(-) GASTOS CAJA CHICA ({expenses.length}):</span>
-                  <span className="tabular-nums">-${totalExpenses.toLocaleString('es-CL')}</span>
+                  <span>-${totalExpenses.toLocaleString('es-CL')}</span>
                 </div>
 
-                <div className="flex justify-between font-black pt-1 border-t border-black/40">
+                <div className="p-solid" />
+
+                <div className="p-row p-bold">
                   <span>(=) EFECTIVO ESPERADO:</span>
-                  <span className="tabular-nums">${expectedCashInDrawer.toLocaleString('es-CL')}</span>
+                  <span>${expectedCashInDrawer.toLocaleString('es-CL')}</span>
                 </div>
 
                 {hasCounted && (
                   <>
-                    <div className="flex justify-between font-bold">
+                    <div className="p-row p-bold">
                       <span>(=) EFECTIVO DECLARADO:</span>
-                      <span className="tabular-nums">${countedNum.toLocaleString('es-CL')}</span>
+                      <span>${countedNum.toLocaleString('es-CL')}</span>
                     </div>
-                    <div className="flex justify-between font-black pt-0.5 border-t border-dashed border-black">
+                    <div className="p-divider" />
+                    <div className="p-row p-black">
                       <span>DIFERENCIA:</span>
-                      <span className="tabular-nums">
+                      <span>
                         {cashDifference === 0 ? '$0 (CUADRADA)' : cashDifference > 0 ? `+$${cashDifference.toLocaleString('es-CL')} (SOBRANTE)` : `-$${Math.abs(cashDifference).toLocaleString('es-CL')} (FALTANTE)`}
                       </span>
                     </div>
@@ -406,24 +450,24 @@ export function CashReportModal({
                 )}
               </div>
 
+              <div className="p-divider" />
+
               {/* Propinas del Personal */}
-              <div className="py-2 border-b border-dashed border-black space-y-1 text-[11px]">
-                <p className="font-black text-[10px] uppercase border-b border-black/30 pb-0.5">
-                  3. FONDO DE PROPINAS
-                </p>
-                <div className="flex justify-between font-bold">
+              <div style={{ marginBottom: '6px' }}>
+                <p className="p-section">3. FONDO DE PROPINAS</p>
+                <div className="p-row p-bold">
                   <span>TOTAL PROPINAS TURNO:</span>
-                  <span className="tabular-nums">${totalTips.toLocaleString('es-CL')}</span>
+                  <span>${totalTips.toLocaleString('es-CL')}</span>
                 </div>
               </div>
 
               {/* Firmas */}
-              <div className="pt-6 pb-2 text-[10px] space-y-8 text-center">
-                <div className="border-t border-black w-40 mx-auto pt-1">
-                  <span>FIRMA CAJERO RESPONSABLE</span>
+              <div style={{ marginTop: '20px' }}>
+                <div className="p-sig-box">
+                  FIRMA CAJERO RESPONSABLE
                 </div>
-                <div className="border-t border-black w-40 mx-auto pt-1">
-                  <span>FIRMA SUPERVISOR / ADMIN</span>
+                <div className="p-sig-box">
+                  FIRMA SUPERVISOR / ADMIN
                 </div>
               </div>
             </div>
