@@ -4,7 +4,7 @@ import type { RestaurantTable } from '../types/database';
 import { 
   Users, Clock, Receipt, RefreshCw, 
   LayoutGrid, Plus, Trash2, X, Armchair, ShoppingBag, 
-  ArrowRight, ArrowRightLeft, GitMerge, MoveRight
+  ArrowRight, ArrowRightLeft, MoveRight
 } from 'lucide-react';
 
 interface OpenTakeoutOrder {
@@ -42,9 +42,9 @@ export function TablesView({
   const [tableCapacity, setTableCapacity] = useState('4');
   const [submitting, setSubmitting] = useState(false);
 
-  // Modal Mover / Juntar Mesa
-  const [transferSourceTable, setTransferSourceTable] = useState<RestaurantTable | null>(null);
-  const [transferLoading, setTransferLoading] = useState(false);
+  // Modal Mover Mesa
+  const [moveSourceTable, setMoveSourceTable] = useState<RestaurantTable | null>(null);
+  const [moveLoading, setMoveLoading] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -182,112 +182,63 @@ export function TablesView({
     }
   };
 
-  // Ejecuta la transferencia o fusión de mesas
-  const handleExecuteTransferOrMerge = async (targetTable: RestaurantTable) => {
-    if (!transferSourceTable || transferSourceTable.id === targetTable.id) return;
+  // Mover cuenta exclusivamente a una mesa disponible
+  const handleExecuteMove = async (targetTable: RestaurantTable) => {
+    if (!moveSourceTable || targetTable.status !== 'available') return;
 
-    const isMerge = targetTable.status === 'occupied';
-    const actionText = isMerge ? 'fusionar con' : 'mover a';
     const confirmed = window.confirm(
-      `¿Confirmas ${actionText} "${targetTable.name}" (#${targetTable.table_number})?`
+      `¿Mover comanda de "${moveSourceTable.name}" a "${targetTable.name}" (#${targetTable.table_number})?`
     );
     if (!confirmed) return;
 
-    setTransferLoading(true);
+    setMoveLoading(true);
 
     try {
       // 1. Obtener la comanda abierta de la mesa de origen
       const { data: sourceOrder, error: srcOrderErr } = await supabase
         .from('orders')
-        .select('*')
-        .eq('table_id', transferSourceTable.id)
+        .select('id')
+        .eq('table_id', moveSourceTable.id)
         .eq('status', 'open')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (srcOrderErr || !sourceOrder) {
-        throw new Error('No se encontró una comanda abierta en la mesa de origen.');
+        throw new Error('No se encontró una comanda abierta en la mesa.');
       }
 
-      if (isMerge) {
-        // --- CASO 1: FUSIÓN DE MESAS OCUPADAS ---
-        const { data: targetOrder, error: targetOrderErr } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('table_id', targetTable.id)
-          .eq('status', 'open')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+      // 2. Reasignar comanda a la nueva mesa
+      const { error: transferErr } = await supabase
+        .from('orders')
+        .update({ table_id: targetTable.id })
+        .eq('id', sourceOrder.id);
 
-        if (targetOrderErr || !targetOrder) {
-          throw new Error('No se encontró la comanda abierta de la mesa destino para fusionar.');
-        }
+      if (transferErr) throw transferErr;
 
-        // Mover todos los platos de la comanda de origen a la comanda de destino
-        const { error: moveItemsErr } = await supabase
-          .from('order_items')
-          .update({ order_id: targetOrder.id })
-          .eq('order_id', sourceOrder.id);
+      // 3. Liberar mesa origen y ocupar mesa destino
+      await supabase
+        .from('restaurant_tables')
+        .update({ status: 'available' })
+        .eq('id', moveSourceTable.id);
 
-        if (moveItemsErr) throw moveItemsErr;
+      await supabase
+        .from('restaurant_tables')
+        .update({ status: 'occupied' })
+        .eq('id', targetTable.id);
 
-        // Sumar y actualizar totales consolidados en la comanda de destino
-        const newSubtotalNet = (Number(targetOrder.subtotal_net) || 0) + (Number(sourceOrder.subtotal_net) || 0);
-        const newIva = (Number(targetOrder.iva_amount) || 0) + (Number(sourceOrder.iva_amount) || 0);
-        const newTip = (Number(targetOrder.tip_amount) || 0) + (Number(sourceOrder.tip_amount) || 0);
-        const newTotal = (Number(targetOrder.total_amount) || 0) + (Number(sourceOrder.total_amount) || 0);
-
-        await supabase
-          .from('orders')
-          .update({
-            subtotal_net: newSubtotalNet,
-            iva_amount: newIva,
-            tip_amount: newTip,
-            total_amount: newTotal,
-          })
-          .eq('id', targetOrder.id);
-
-        // Eliminar la orden vacía de origen
-        await supabase.from('orders').delete().eq('id', sourceOrder.id);
-
-        // Liberar la mesa de origen
-        await supabase
-          .from('restaurant_tables')
-          .update({ status: 'available' })
-          .eq('id', transferSourceTable.id);
-
-      } else {
-        // --- CASO 2: MOVER CUENTA A MESA VACÍA ---
-        // Reasignar la comanda al nuevo table_id
-        const { error: transferErr } = await supabase
-          .from('orders')
-          .update({ table_id: targetTable.id })
-          .eq('id', sourceOrder.id);
-
-        if (transferErr) throw transferErr;
-
-        // Liberar mesa de origen y ocupar mesa de destino
-        await supabase
-          .from('restaurant_tables')
-          .update({ status: 'available' })
-          .eq('id', transferSourceTable.id);
-
-        await supabase
-          .from('restaurant_tables')
-          .update({ status: 'occupied' })
-          .eq('id', targetTable.id);
-      }
-
-      setTransferSourceTable(null);
+      setMoveSourceTable(null);
       await loadData();
     } catch (err: any) {
-      alert('Error en la operación: ' + (err?.message || 'Error de base de datos'));
+      alert('Error al mover mesa: ' + (err?.message || 'Error de base de datos'));
     } finally {
-      setTransferLoading(false);
+      setMoveLoading(false);
     }
   };
+
+  const availableTargetTables = tables.filter(
+    (t) => (!moveSourceTable || t.id !== moveSourceTable.id) && t.status === 'available'
+  );
 
   return (
     <div className="space-y-4">
@@ -471,20 +422,20 @@ export function TablesView({
                       {table.capacity}
                     </span>
 
-                    {/* Botón de Mover/Juntar Mesa (solo mesas ocupadas) */}
+                    {/* Botón Cambiar de Mesa (solo visible en mesas ocupadas) */}
                     {isOccupied && (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setTransferSourceTable(table);
+                          setMoveSourceTable(table);
                         }}
                         className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
                           isDark 
                             ? 'bg-zinc-800 hover:bg-zinc-700 text-amber-400 border-zinc-700' 
                             : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-200'
                         }`}
-                        title="Mover comanda o juntar con otra mesa"
+                        title="Cambiar a otra mesa libre"
                       >
                         <ArrowRightLeft className="w-3.5 h-3.5" />
                       </button>
@@ -538,8 +489,8 @@ export function TablesView({
         </div>
       )}
 
-      {/* MODAL 1: Mover o Juntar Mesa */}
-      {transferSourceTable && (
+      {/* MODAL 1: Cambiar Comanda a Mesa Libre */}
+      {moveSourceTable && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3">
           <div className={`w-full max-w-md rounded-3xl p-5 border shadow-2xl space-y-4 ${
             isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
@@ -553,17 +504,17 @@ export function TablesView({
                 </div>
                 <div>
                   <h3 className="font-extrabold text-sm">
-                    Reasignar: {transferSourceTable.name} (#{transferSourceTable.table_number})
+                    Cambiar Mesa: {moveSourceTable.name} (#{moveSourceTable.table_number})
                   </h3>
                   <p className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
-                    Elige el destino para mover la cuenta o juntar mesas
+                    Elige una mesa disponible para transferir la cuenta
                   </p>
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={() => setTransferSourceTable(null)}
+                onClick={() => setMoveSourceTable(null)}
                 className={`p-1.5 rounded-lg transition cursor-pointer ${
                   isDark ? 'text-zinc-400 hover:text-zinc-100 bg-zinc-800' : 'text-slate-400 hover:text-slate-800 bg-slate-100'
                 }`}
@@ -572,68 +523,45 @@ export function TablesView({
               </button>
             </div>
 
-            {/* Listado de mesas destino */}
+            {/* Listado de mesas libres */}
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {tables
-                .filter((t) => t.id !== transferSourceTable.id)
-                .map((target) => {
-                  const isAvailable = target.status === 'available';
-
-                  return (
-                    <button
-                      key={target.id}
-                      type="button"
-                      disabled={transferLoading}
-                      onClick={() => handleExecuteTransferOrMerge(target)}
-                      className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all active:scale-[0.98] cursor-pointer ${
-                        isAvailable
-                          ? isDark
-                            ? 'bg-zinc-950 border-emerald-500/30 hover:border-emerald-500/70 hover:bg-emerald-500/5'
-                            : 'bg-emerald-50/40 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50/80 shadow-xs'
-                          : isDark
-                          ? 'bg-zinc-950 border-amber-500/30 hover:border-amber-500/70 hover:bg-amber-500/5'
-                          : 'bg-amber-50/40 border-amber-200 hover:border-amber-400 hover:bg-amber-50/80 shadow-xs'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs border ${
-                          isAvailable
-                            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
-                            : 'bg-amber-500/20 border-amber-500/40 text-amber-400'
-                        }`}>
-                          #{target.table_number}
-                        </span>
-                        <div>
-                          <p className={`text-xs font-bold ${isDark ? 'text-zinc-200' : 'text-slate-800'}`}>
-                            {target.name}
-                          </p>
-                          <p className={`text-[10px] font-mono ${isDark ? 'text-zinc-500' : 'text-slate-500'}`}>
-                            Capacidad: {target.capacity} pers.
-                          </p>
-                        </div>
+              {availableTargetTables.length === 0 ? (
+                <div className="p-8 text-center text-xs font-mono text-zinc-500">
+                  No hay mesas libres en este momento para realizar el cambio.
+                </div>
+              ) : (
+                availableTargetTables.map((target) => (
+                  <button
+                    key={target.id}
+                    type="button"
+                    disabled={moveLoading}
+                    onClick={() => handleExecuteMove(target)}
+                    className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all active:scale-[0.98] cursor-pointer ${
+                      isDark
+                        ? 'bg-zinc-950 border-emerald-500/30 hover:border-emerald-500/70 hover:bg-emerald-500/5'
+                        : 'bg-emerald-50/40 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50/80 shadow-xs'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs border bg-emerald-500/20 border-emerald-500/40 text-emerald-400">
+                        #{target.table_number}
+                      </span>
+                      <div>
+                        <p className={`text-xs font-bold ${isDark ? 'text-zinc-200' : 'text-slate-800'}`}>
+                          {target.name}
+                        </p>
+                        <p className={`text-[10px] font-mono ${isDark ? 'text-zinc-500' : 'text-slate-500'}`}>
+                          Capacidad: {target.capacity} personas
+                        </p>
                       </div>
+                    </div>
 
-                      <div className="flex items-center gap-1.5 text-xs font-bold font-mono">
-                        {isAvailable ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
-                            <MoveRight className="w-3.5 h-3.5" /> Mover Aquí
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
-                            <GitMerge className="w-3.5 h-3.5" /> Fusionar
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-            </div>
-
-            <div className={`p-3 rounded-xl border text-[11px] font-mono ${
-              isDark ? 'bg-zinc-950/70 border-zinc-800 text-zinc-400' : 'bg-slate-50 border-slate-200 text-slate-600'
-            }`}>
-              💡 <strong>Mover:</strong> Pasa la cuenta a una mesa vacía. <br />
-              💡 <strong>Fusionar:</strong> Agrupa los platos con otra mesa ocupada y libera esta.
+                    <span className="inline-flex items-center gap-1 text-xs font-bold font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                      <MoveRight className="w-3.5 h-3.5" /> Mover Aquí
+                    </span>
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>
