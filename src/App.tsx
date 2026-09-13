@@ -7,13 +7,14 @@ import { ShiftClosingModal } from './components/ShiftClosingModal';
 import { KitchenView } from './components/KitchenView';
 import { InventoryView } from './components/InventoryView';
 import { AdminDashboardView } from './components/AdminDashboardView';
+import { CashRegisterView } from './components/CashRegisterView';
 import { ReceiptModal } from './components/ReceiptModal';
 import { StaffPortalModal, type StaffMember } from './components/StaffPortalModal';
 import type { RestaurantTable } from './types/database';
 import { 
   UtensilsCrossed, Store, PlusCircle, 
   CreditCard, Lock, ChefHat, LayoutGrid, Boxes, TrendingUp, Printer,
-  User, Sun, Moon, ShieldCheck, Delete, AlertTriangle
+  User, Sun, Moon, ShieldCheck, Delete, AlertTriangle, DollarSign
 } from 'lucide-react';
 
 // Atrapa-errores para evitar pantallas negras en móviles
@@ -80,7 +81,7 @@ export default function App() {
   const [enteredPin, setEnteredPin] = useState('');
   const [pinError, setPinError] = useState(false);
 
-  const [currentView, setCurrentView] = useState<'salon' | 'kitchen' | 'inventory' | 'admin'>('salon');
+  const [currentView, setCurrentView] = useState<'salon' | 'kitchen' | 'inventory' | 'cash' | 'admin'>('salon');
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   
   const [selectedTable, setSelectedTable] = useState<RestaurantTable | null>(null);
@@ -326,7 +327,7 @@ export default function App() {
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 </h1>
                 <p className={`text-[11px] font-mono ${isDark ? 'text-zinc-400' : 'text-slate-500 font-medium'}`}>
-                  Salón, KDS, Bodega & Gerencia
+                  Salón, KDS, Bodega, Caja & Gerencia
                 </p>
               </div>
             </div>
@@ -403,6 +404,16 @@ export default function App() {
               }`}
             >
               <Boxes className="w-3.5 h-3.5" /> Bodega
+            </button>
+            <button
+              onClick={() => setCurrentView('cash')}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer ${
+                currentView === 'cash'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : isDark ? 'text-zinc-400 hover:text-zinc-200' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <DollarSign className="w-3.5 h-3.5" /> Caja
             </button>
             <button
               onClick={() => setCurrentView('admin')}
@@ -634,18 +645,28 @@ export default function App() {
             </div>
           )}
 
+          {/* Vista Cocina */}
           {currentView === 'kitchen' && (
             <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
               <KitchenView isDark={isDark} />
             </div>
           )}
 
+          {/* Vista Bodega */}
           {currentView === 'inventory' && (
             <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
               <InventoryView isDark={isDark} />
             </div>
           )}
 
+          {/* Vista Caja */}
+          {currentView === 'cash' && (
+            <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
+              <CashRegisterView isDark={isDark} />
+            </div>
+          )}
+
+          {/* Vista Gerencia */}
           {currentView === 'admin' && (
             <div className={`p-5 rounded-2xl border shadow-xs ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200'}`}>
               <AdminDashboardView isDark={isDark} />
