@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Product, RestaurantTable } from '../types/database';
-import { X, Plus, Minus, Send, Coffee, ShoppingBag, User, Sparkles } from 'lucide-react';
+import { X, Plus, Minus, Send, Coffee, ShoppingBag, User } from 'lucide-react';
 
 interface CartItem {
   product: Product;
@@ -78,7 +78,6 @@ export function POSOrderModal({
     );
   };
 
-  // Conversión numérica ultra-segura para garantizar el cálculo
   const parseNumber = (val: any): number => {
     if (typeof val === 'number') return isNaN(val) ? 0 : val;
     if (!val) return 0;
@@ -156,228 +155,211 @@ export function POSOrderModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex flex-col md:items-center md:justify-center md:p-4">
-      {/* Ventana adaptativa a pantalla completa en móviles (100dvh) */}
-      <div className="bg-zinc-950 w-full h-[100dvh] md:h-[90vh] md:max-w-4xl md:rounded-2xl border-zinc-800 md:border flex flex-col overflow-hidden shadow-2xl">
+    <div
+      translate="no"
+      className="notranslate fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
+    >
+      <div className="bg-zinc-900 border border-zinc-800 w-full max-w-4xl max-h-[92vh] rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-y-auto md:overflow-hidden my-auto">
         
-        {/* CABECERA (Fija arriba) */}
-        <div className="shrink-0 p-3.5 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-zinc-950 font-black font-mono text-[10px] tracking-wider animate-pulse flex items-center gap-1 shadow-sm">
-              <Sparkles className="w-3 h-3" /> V2.5 ONLINE
-            </span>
+        {/* Catálogo de Productos */}
+        <div className="flex-1 flex flex-col border-b md:border-b-0 md:border-r border-zinc-800 p-4">
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-3 shrink-0">
             <div>
-              <h2 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5">
+              <h2 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
                 {isTakeoutOrder ? (
                   <>
-                    <ShoppingBag className="w-4 h-4 text-violet-400" /> Para Llevar
+                    <span className="p-1 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                      <ShoppingBag className="w-4 h-4" />
+                    </span>
+                    Nuevo Pedido • Para Llevar
                   </>
                 ) : (
                   <>
-                    <Coffee className="w-4 h-4 text-emerald-400" /> {table?.name}
+                    <span className="p-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <Coffee className="w-4 h-4" />
+                    </span>
+                    Tomar Pedido — {table?.name}
                   </>
                 )}
               </h2>
-              <p className="text-[10px] font-mono text-zinc-400">
-                Atiende: <strong className="text-amber-400">{waiterName}</strong>
+              <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
+                Atendido por: <strong className="text-amber-400">{waiterName}</strong>
               </p>
             </div>
+            <button 
+              onClick={onClose} 
+              className="p-1.5 text-zinc-400 hover:text-zinc-100 bg-zinc-800 rounded-lg transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 text-zinc-400 hover:text-zinc-100 bg-zinc-800 rounded-xl transition-all active:scale-90 cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Campo Para Llevar si aplica */}
-        {isTakeoutOrder && (
-          <div className="shrink-0 p-2.5 bg-violet-950/20 border-b border-violet-500/20">
-            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-1.5">
+          {/* Campo Para Llevar */}
+          {isTakeoutOrder && (
+            <div className="mb-3 p-2.5 bg-violet-950/30 border border-violet-500/30 rounded-xl flex items-center gap-2 shrink-0">
               <User className="w-4 h-4 text-violet-400 shrink-0" />
               <input
                 type="text"
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Nombre del cliente..."
-                className="w-full bg-transparent text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
+                placeholder="Nombre del cliente o ticket de retiro (Ej: Juan Pérez)"
+                className="w-full bg-zinc-900/90 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-hidden focus:border-violet-500"
+                autoFocus
               />
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Categorías Fijas */}
-        <div className="shrink-0 flex gap-2 overflow-x-auto px-3.5 py-2.5 bg-zinc-900/60 border-b border-zinc-800">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setActiveCategory(cat)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                activeCategory === cat
-                  ? 'bg-emerald-500 text-zinc-950 font-bold shadow-xs'
-                  : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-
-        {/* CUERPO CENTRAL CON SCROLL MÓVIL ASEGURADO */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-4">
-          
-          {/* Grilla de productos */}
-          <div>
-            <span className="text-[10px] font-mono uppercase font-bold text-zinc-400 tracking-wider block mb-2">
-              Platos de la Carta:
-            </span>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              {loading ? (
-                <div className="col-span-full py-10 text-center text-xs font-mono text-zinc-500 animate-pulse">
-                  Cargando carta...
-                </div>
-              ) : (
-                filteredProducts.map((p) => {
-                  const inCart = cart.find((it) => it.product.id === p.id);
-                  const qty = inCart?.quantity || 0;
-                  const isSelected = qty > 0;
-
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => addToCart(p)}
-                      className={`p-3 rounded-xl text-left flex flex-col justify-between transition-all active:scale-95 cursor-pointer border ${
-                        isSelected
-                          ? 'bg-emerald-500/15 border-emerald-500 shadow-md shadow-emerald-500/10 ring-1 ring-emerald-500/40'
-                          : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className="w-full">
-                        <div className="flex justify-between items-start gap-1">
-                          <span className="text-xs font-bold text-zinc-200 line-clamp-2 leading-tight">
-                            {p.name}
-                          </span>
-                          {isSelected && (
-                            <span className="px-1.5 py-0.5 rounded-md bg-emerald-500 text-zinc-950 font-black font-mono text-[10px] shrink-0">
-                              {qty}x
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex justify-between items-center w-full">
-                        <span className="text-xs font-bold font-mono text-emerald-400 tabular-nums">
-                          ${parseNumber(p.price).toLocaleString('es-CL')}
-                        </span>
-                        
-                        <span className={`p-1.5 rounded-lg font-bold text-xs ${
-                          isSelected
-                            ? 'bg-emerald-500 text-zinc-950'
-                            : 'bg-zinc-800 text-emerald-400 border border-emerald-500/30'
-                        }`}>
-                          <Plus className="w-3.5 h-3.5" />
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
+          {/* Categorías */}
+          <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 shrink-0">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setActiveCategory(cat)}
+                className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  activeCategory === cat
+                    ? 'bg-emerald-500 text-zinc-950 shadow-xs font-bold'
+                    : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
           </div>
 
-          {/* Listado de comanda seleccionada */}
-          <div className="pt-2 border-t border-zinc-800">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-[11px] font-mono font-bold uppercase text-zinc-300">
-                Comanda Actual:
-              </span>
-              <span className="text-xs font-mono font-bold text-emerald-400">
-                {totalCount} ítem(s)
-              </span>
-            </div>
-
-            {cart.length === 0 ? (
-              <div className="p-5 text-center border border-dashed border-zinc-800 rounded-xl">
-                <p className="text-xs text-zinc-500 font-mono">Toca los platos arriba para armar el pedido.</p>
+          {/* Grid de Productos Original */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pr-1 md:flex-1 md:overflow-y-auto">
+            {loading ? (
+              <div className="col-span-full py-16 text-center text-xs font-mono text-zinc-500 animate-pulse">
+                Cargando carta...
               </div>
             ) : (
-              <div className="space-y-2">
-                {cart.map(({ product, quantity }) => (
+              filteredProducts.map((p) => {
+                const itemInCart = cart.find((it) => it.product.id === p.id);
+                const qty = itemInCart?.quantity || 0;
+                const isSelected = qty > 0;
+
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => addToCart(p)}
+                    className={`p-3 rounded-xl text-left flex flex-col justify-between transition-all active:scale-95 cursor-pointer border ${
+                      isSelected
+                        ? 'bg-zinc-900 border-emerald-500/60 shadow-xs'
+                        : 'bg-zinc-950/60 hover:bg-zinc-800/80 border-zinc-800'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start gap-1 w-full">
+                      <span className="text-xs font-semibold text-zinc-200 line-clamp-2">{p.name}</span>
+                      {isSelected && (
+                        <span className="px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold font-mono text-[10px] shrink-0">
+                          {qty}x
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="mt-3 flex justify-between items-center w-full">
+                      <span className="text-xs font-bold font-mono text-emerald-400 tabular-nums">
+                        ${parseNumber(p.price).toLocaleString('es-CL')}
+                      </span>
+                      {/* El botón se queda verde permanentemente si está en la comanda */}
+                      <span className={`p-1 rounded-lg transition-colors ${
+                        isSelected
+                          ? 'bg-emerald-500 text-zinc-950 font-bold shadow-xs'
+                          : 'bg-zinc-800 text-zinc-400'
+                      }`}>
+                        <Plus className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Canasta de Comanda */}
+        <div className="w-full md:w-80 bg-zinc-950/60 p-4 flex flex-col justify-between shrink-0">
+          <div>
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-3 mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+                Comanda Actual
+              </span>
+              <span className="text-xs font-mono text-zinc-500">{totalCount} ítem(s)</span>
+            </div>
+
+            <div className="space-y-2 max-h-[35vh] md:max-h-[50vh] overflow-y-auto pr-1">
+              {cart.length === 0 ? (
+                <p className="text-xs text-zinc-500 text-center py-12">No hay platos seleccionados.</p>
+              ) : (
+                cart.map(({ product, quantity }) => (
                   <div
                     key={product.id}
                     className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-between"
                   >
                     <div className="flex-1 min-w-0 pr-2">
-                      <p className="text-xs font-bold text-zinc-200 truncate">{product.name}</p>
-                      <span className="text-xs font-mono text-emerald-400 font-bold">
+                      <p className="text-xs font-medium text-zinc-200 truncate">{product.name}</p>
+                      <span className="text-[11px] font-mono text-zinc-400">
                         ${(parseNumber(product.price) * quantity).toLocaleString('es-CL')}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => removeFromCart(product.id)}
-                        className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-all active:scale-90 cursor-pointer"
+                        className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
                       >
-                        <Minus className="w-3.5 h-3.5" />
+                        <Minus className="w-3 h-3" />
                       </button>
-                      <span className="w-6 text-center text-xs font-black font-mono text-zinc-100">
+                      <span className="w-5 text-center text-xs font-bold font-mono text-zinc-100">
                         {quantity}
                       </span>
                       <button
                         type="button"
                         onClick={() => addToCart(product)}
-                        className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-all active:scale-90 cursor-pointer"
+                        className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
                       >
-                        <Plus className="w-3.5 h-3.5" />
+                        <Plus className="w-3 h-3" />
                       </button>
                     </div>
                   </div>
-                ))}
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-3 border-t border-zinc-800 mt-3">
+            <div className="space-y-1 font-mono text-xs">
+              <div className="flex justify-between text-zinc-400">
+                <span>Neto:</span>
+                <span>${subtotal_net.toLocaleString('es-CL')}</span>
               </div>
-            )}
-          </div>
-        </div>
+              <div className="flex justify-between text-zinc-400">
+                <span>IVA (19%):</span>
+                <span>${iva_amount.toLocaleString('es-CL')}</span>
+              </div>
+              <div className="flex justify-between font-bold text-sm text-emerald-400 pt-1 border-t border-zinc-800">
+                <span>Total:</span>
+                <span className="tabular-nums">${totalWithIva.toLocaleString('es-CL')}</span>
+              </div>
+            </div>
 
-        {/* PIE DE PÁGINA FIJO CON TOTALES Y BOTÓN (NUNCA DESAPARECE) */}
-        <div className="shrink-0 bg-zinc-900 border-t border-zinc-800 p-3.5 shadow-2xl">
-          <div className="flex justify-between items-center mb-2 text-xs font-mono">
-            <span className="text-zinc-400">
-              Neto: ${subtotal_net.toLocaleString('es-CL')} | IVA: ${iva_amount.toLocaleString('es-CL')}
-            </span>
-            <span className="text-base font-black text-emerald-400">
-              ${totalWithIva.toLocaleString('es-CL')}
-            </span>
+            <button
+              type="button"
+              onClick={handleConfirmOrder}
+              disabled={cart.length === 0 || submitting}
+              className={`w-full py-3 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg cursor-pointer ${
+                isTakeoutOrder
+                  ? 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-600/20'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-emerald-500/20'
+              }`}
+            >
+              <Send className="w-4 h-4" />
+              {submitting ? 'Marchando...' : isTakeoutOrder ? 'Marchar Para Llevar' : 'Enviar a Cocina'}
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={handleConfirmOrder}
-            disabled={cart.length === 0 || submitting}
-            className={`w-full py-3.5 font-black text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg cursor-pointer ${
-              cart.length === 0
-                ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
-                : isTakeoutOrder
-                ? 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-600/30'
-                : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-emerald-500/30'
-            }`}
-          >
-            <Send className="w-4 h-4" />
-            <span>
-              {submitting
-                ? 'Marchando comanda...'
-                : isTakeoutOrder
-                ? `Marchar Para Llevar ($${totalWithIva.toLocaleString('es-CL')})`
-                : `Enviar a Cocina ($${totalWithIva.toLocaleString('es-CL')})`}
-            </span>
-          </button>
         </div>
 
       </div>
